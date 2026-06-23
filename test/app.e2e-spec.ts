@@ -316,12 +316,12 @@ describe('Nomina360 API (e2e)', () => {
         email: testEmployeeEmail,
         phone: '3001234567',
         position: 'Auxiliar de pruebas',
-        department: 'Tecnología',
+        department: 'TecnologÃ­a',
         contractType: 'Indefinido',
         baseSalary: 1800000,
         startDate: '2026-01-15',
         eps: 'Sura',
-        pensionFund: 'Protección',
+        pensionFund: 'ProtecciÃ³n',
         arl: 'Positiva',
         compensationBox: 'Comfama',
       })
@@ -372,7 +372,7 @@ describe('Nomina360 API (e2e)', () => {
         employeeId: createdEmployeeId,
         type: 'BONUS',
         amount: 150000,
-        description: 'Bonificación automática E2E',
+        description: 'BonificaciÃ³n automÃ¡tica E2E',
         periodYear: 2026,
         periodMonth: 8,
       })
@@ -388,7 +388,7 @@ describe('Nomina360 API (e2e)', () => {
   it('GET /payroll-novelties debe encontrar la novedad creada', async () => {
     const response = await request(app.getHttpServer())
       .get(
-        '/payroll-novelties?year=2026&month=8&search=Bonificación&page=1&limit=20',
+        '/payroll-novelties?year=2026&month=8&search=BonificaciÃ³n&page=1&limit=20',
       )
       .set('Authorization', `Bearer ${ownerToken}`)
       .expect(200);
@@ -398,7 +398,7 @@ describe('Nomina360 API (e2e)', () => {
     );
 
     expect(novelty).toBeDefined();
-    expect(novelty.description).toBe('Bonificación automática E2E');
+    expect(novelty.description).toBe('BonificaciÃ³n automÃ¡tica E2E');
   });
 
   it('GET /audit debe registrar CREATE_PAYROLL_NOVELTY', async () => {
@@ -443,5 +443,16 @@ describe('Nomina360 API (e2e)', () => {
 
     expect(auditRecord).toBeDefined();
     expect(auditRecord.action).toBe('DEACTIVATE_EMPLOYEE');
+  });
+  it('GET /health debe responder 200 y confirmar conexión', async () => {
+    const response = await request(app.getHttpServer())
+      .get('/health')
+      .expect(200);
+
+    expect(response.body).toHaveProperty('status', 'ok');
+    expect(response.body).toHaveProperty('service', 'nomina360-api');
+    expect(response.body).toHaveProperty('database', 'connected');
+    expect(response.body).toHaveProperty('timestamp');
+    expect(response.body).toHaveProperty('uptime');
   });
 });

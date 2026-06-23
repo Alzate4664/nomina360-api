@@ -1,4 +1,5 @@
-import { Module } from '@nestjs/common';
+﻿import { Module } from '@nestjs/common';
+import { HealthModule } from './health/health.module';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { PrismaModule } from './prisma/prisma.module';
@@ -12,8 +13,10 @@ import { UsersModule } from './users/users.module';
 import { AuditModule } from './audit/audit.module';
 
 @Module({
-  imports: [PrismaModule, AuthModule, CompaniesModule, EmployeesModule, PayrollNoveltiesModule, PayrollModule, ReportsModule, UsersModule, AuditModule],
+  imports: [
+    HealthModule,PrismaModule, AuthModule, CompaniesModule, EmployeesModule, PayrollNoveltiesModule, PayrollModule, ReportsModule, UsersModule, AuditModule],
   controllers: [AppController],
   providers: [AppService],
 })
 export class AppModule {}
+
