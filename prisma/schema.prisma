@@ -1,0 +1,183 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model Company {
+  id             String   @id @default(uuid())
+  name           String
+  nit            String   @unique
+  email          String
+  phone          String?
+  address        String?
+  status         CompanyStatus @default(ACTIVE)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  users          User[]
+  employees      Employee[]
+  payrollPeriods PayrollPeriod[]
+}
+
+model User {
+  id           String   @id @default(uuid())
+  companyId    String?
+  name         String
+  email        String   @unique
+  passwordHash String
+  role         UserRole
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+
+  company      Company? @relation(fields: [companyId], references: [id])
+}
+
+model Employee {
+  id              String   @id @default(uuid())
+  companyId       String
+  firstName       String
+  lastName        String
+  documentType    String
+  documentNumber  String
+  email           String?
+  phone           String?
+  position        String
+  department      String?
+  contractType    String
+  baseSalary      Decimal
+  startDate       DateTime
+  status          EmployeeStatus @default(ACTIVE)
+
+createdAt DateTime @default(now())
+updatedAt DateTime @updatedAt
+
+  eps             String?
+  pensionFund     String?
+  arl             String?
+  compensationBox String?
+
+  company         Company @relation(fields: [companyId], references: [id])
+  payrollItems    PayrollItem[]
+  novelties       PayrollNovelty[]
+
+  @@unique([companyId, documentNumber])
+}
+
+model PayrollPeriod {
+  id         String   @id @default(uuid())
+  companyId  String
+  year       Int
+  month      Int
+  status     PayrollStatus @default(DRAFT)
+  approvedAt DateTime?
+  createdAt  DateTime @default(now())
+
+  company    Company @relation(fields: [companyId], references: [id])
+  items      PayrollItem[]
+
+  @@unique([companyId, year, month])
+}
+
+model PayrollItem {
+  id              String   @id @default(uuid())
+  companyId        String
+  employeeId       String
+  payrollPeriodId  String
+
+  baseSalary       Decimal
+  earnedTotal      Decimal
+  deductionsTotal  Decimal
+  netPay           Decimal
+
+  createdAt        DateTime @default(now())
+
+  employee         Employee @relation(fields: [employeeId], references: [id])
+  period           PayrollPeriod @relation(fields: [payrollPeriodId], references: [id])
+  concepts         PayrollConceptDetail[]
+}
+
+model PayrollConceptDetail {
+  id            String   @id @default(uuid())
+  payrollItemId String
+  conceptCode   String
+  conceptName   String
+  type          ConceptType
+  amount        Decimal
+
+  payrollItem   PayrollItem @relation(fields: [payrollItemId], references: [id])
+}
+
+model PayrollNovelty {
+  id          String   @id @default(uuid())
+  companyId   String
+  employeeId  String
+  type        NoveltyType
+  quantity    Decimal?
+  amount      Decimal?
+  description String?
+  periodYear  Int
+  periodMonth Int
+  createdAt   DateTime @default(now())
+
+  employee    Employee @relation(fields: [employeeId], references: [id])
+}
+
+enum CompanyStatus {
+  ACTIVE
+  SUSPENDED
+  CANCELLED
+}
+
+enum UserRole {
+  SUPER_ADMIN
+  OWNER
+  ADMIN
+  ACCOUNTANT
+  VIEWER
+}
+
+enum EmployeeStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum PayrollStatus {
+  DRAFT
+  CALCULATED
+  APPROVED
+  PAID
+  CANCELLED
+}
+
+enum ConceptType {
+  EARNING
+  DEDUCTION
+  OBLIGATION
+}
+
+enum NoveltyType {
+  OVERTIME
+  NIGHT_SURCHARGE
+  SUNDAY_SURCHARGE
+  HOLIDAY_SURCHARGE
+  BONUS
+  DEDUCTION
+  ABSENCE
+  VACATION
+  SICK_LEAVE
+}
+
+model AuditLog {
+  id        String   @id @default(uuid())
+  companyId String?
+  userId    String?
+  action    String
+  entity    String
+  entityId  String?
+  oldValue  Json?
+  newValue  Json?
+  createdAt DateTime @default(now())
+}

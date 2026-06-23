@@ -1,0 +1,65 @@
+name: Backend Tests
+
+on:
+  push:
+    branches:
+      - main
+      - master
+      - develop
+  pull_request:
+    branches:
+      - main
+      - master
+      - develop
+
+jobs:
+  e2e-tests:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: nomina360
+          POSTGRES_PASSWORD: nomina360_dev
+          POSTGRES_DB: nomina360_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U nomina360 -d nomina360_test"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
+
+    env:
+      DATABASE_URL: postgresql://nomina360:nomina360_dev@localhost:5432/nomina360_test?schema=public
+      JWT_SECRET: test_secret_nomina360
+      NODE_ENV: test
+
+    steps:
+      - name: Descargar repositorio
+        uses: actions/checkout@v5
+
+      - name: Configurar Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Instalar dependencias
+        run: npm ci
+
+      - name: Generar Prisma Client
+        run: npx prisma generate
+
+      - name: Aplicar migraciones
+        run: npx prisma migrate deploy
+
+      - name: Preparar datos de prueba
+        run: npx ts-node test/seed-test.ts
+
+      - name: Ejecutar pruebas e2e
+        run: npm run test:e2e
+
+      - name: Compilar backend
+        run: npm run build
