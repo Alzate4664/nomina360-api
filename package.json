@@ -20,7 +20,8 @@
     "test:e2e": "jest --config ./test/jest-e2e.json",
     "test:e2e:prepare": "prisma migrate deploy && ts-node test/seed-test.ts",
     "test:e2e:full": "npm run test:e2e:prepare && npm run test:e2e",
-    "test:e2e:watch": "jest --config ./test/jest-e2e.json --watch"
+    "test:e2e:watch": "jest --config ./test/jest-e2e.json --watch",
+    "seed:production": "ts-node prisma/seed-production.ts"
   },
   "dependencies": {
     "@nestjs/common": "^11.0.1",
