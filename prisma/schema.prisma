@@ -7,15 +7,15 @@ datasource db {
 }
 
 model Company {
-  id             String   @id @default(uuid())
-  name           String
-  nit            String   @unique
-  email          String
-  phone          String?
-  address        String?
-  status         CompanyStatus @default(ACTIVE)
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  id        String        @id @default(uuid())
+  name      String
+  nit       String        @unique
+  email     String
+  phone     String?
+  address   String?
+  status    CompanyStatus @default(ACTIVE)
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
 
   users          User[]
   employees      Employee[]
@@ -32,86 +32,105 @@ model User {
   isActive     Boolean  @default(true)
   createdAt    DateTime @default(now())
 
-  company      Company? @relation(fields: [companyId], references: [id])
+  company Company? @relation(fields: [companyId], references: [id])
 }
 
 model Employee {
-  id              String   @id @default(uuid())
-  companyId       String
-  firstName       String
-  lastName        String
-  documentType    String
-  documentNumber  String
-  email           String?
-  phone           String?
-  position        String
-  department      String?
-  contractType    String
-  baseSalary      Decimal
-  startDate       DateTime
-  status          EmployeeStatus @default(ACTIVE)
+  id             String         @id @default(uuid())
+  companyId      String
+  firstName      String
+  lastName       String
+  documentType   String
+  documentNumber String
+  email          String?
+  phone          String?
+  position       String
+  department     String?
+  contractType   String
+  baseSalary     Decimal
+  startDate      DateTime
+  status         EmployeeStatus @default(ACTIVE)
 
-createdAt DateTime @default(now())
-updatedAt DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   eps             String?
   pensionFund     String?
   arl             String?
   compensationBox String?
 
-  company         Company @relation(fields: [companyId], references: [id])
-  payrollItems    PayrollItem[]
-  novelties       PayrollNovelty[]
+  company      Company          @relation(fields: [companyId], references: [id])
+  payrollItems PayrollItem[]
+  novelties    PayrollNovelty[]
 
   @@unique([companyId, documentNumber])
 }
 
 model PayrollPeriod {
-  id         String   @id @default(uuid())
-  companyId  String
-  year       Int
-  month      Int
-  status     PayrollStatus @default(DRAFT)
+  id          String      @id @default(uuid())
+  companyId   String
+  name        String?
+  payrollType PayrollType @default(MONTHLY)
+
+  // Se conservan para mantener compatibilidad con el módulo actual.
+  year  Int
+  month Int
+
+  startDate   DateTime?
+  endDate     DateTime?
+  paymentDate DateTime?
+
+  status PayrollStatus @default(DRAFT)
+
+  createdById  String?
+  approvedById String?
+  closedById   String?
+
   approvedAt DateTime?
-  createdAt  DateTime @default(now())
+  closedAt   DateTime?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @default(now()) @updatedAt
 
-  company    Company @relation(fields: [companyId], references: [id])
-  items      PayrollItem[]
+  company Company       @relation(fields: [companyId], references: [id])
+  items   PayrollItem[]
 
-  @@unique([companyId, year, month])
+  @@unique([companyId, year, month, payrollType])
+  @@index([companyId, status])
+  @@index([companyId, startDate, endDate])
+  @@index([createdAt])
 }
 
 model PayrollItem {
-  id              String   @id @default(uuid())
-  companyId        String
-  employeeId       String
-  payrollPeriodId  String
+  id              String @id @default(uuid())
+  companyId       String
+  employeeId      String
+  payrollPeriodId String
 
-  baseSalary       Decimal
-  earnedTotal      Decimal
-  deductionsTotal  Decimal
-  netPay           Decimal
+  baseSalary      Decimal
+  earnedTotal     Decimal
+  deductionsTotal Decimal
+  netPay          Decimal
 
-  createdAt        DateTime @default(now())
+  createdAt DateTime @default(now())
 
-  employee         Employee @relation(fields: [employeeId], references: [id])
-  period           PayrollPeriod @relation(fields: [payrollPeriodId], references: [id])
-  concepts         PayrollConceptDetail[]
+  employee Employee               @relation(fields: [employeeId], references: [id])
+  period   PayrollPeriod          @relation(fields: [payrollPeriodId], references: [id])
+  concepts PayrollConceptDetail[]
 }
 
 model PayrollConceptDetail {
-  id            String   @id @default(uuid())
+  id            String      @id @default(uuid())
   payrollItemId String
   conceptCode   String
   conceptName   String
   type          ConceptType
   amount        Decimal
 
-  payrollItem   PayrollItem @relation(fields: [payrollItemId], references: [id])
+  payrollItem PayrollItem @relation(fields: [payrollItemId], references: [id])
 }
 
 model PayrollNovelty {
-  id          String   @id @default(uuid())
+  id          String      @id @default(uuid())
   companyId   String
   employeeId  String
   type        NoveltyType
@@ -120,9 +139,9 @@ model PayrollNovelty {
   description String?
   periodYear  Int
   periodMonth Int
-  createdAt   DateTime @default(now())
+  createdAt   DateTime    @default(now())
 
-  employee    Employee @relation(fields: [employeeId], references: [id])
+  employee Employee @relation(fields: [employeeId], references: [id])
 }
 
 enum CompanyStatus {
@@ -144,10 +163,25 @@ enum EmployeeStatus {
   INACTIVE
 }
 
+enum PayrollType {
+  MONTHLY
+  SEMIMONTHLY
+  WEEKLY
+  BIWEEKLY
+  BONUS
+  SEVERANCE
+  TERMINATION
+  EXTRAORDINARY
+}
+
 enum PayrollStatus {
   DRAFT
+  COLLECTING_NOVELTIES
+  CALCULATING
   CALCULATED
   APPROVED
+  CLOSED
+  REOPENED
   PAID
   CANCELLED
 }
