@@ -15,7 +15,9 @@ import { RolesGuard } from '../common/guards/roles.guard';
 import { CreateEmployeeDto } from './dto/create-employee.dto';
 import { EmployeesService } from './employees.service';
 import { parsePositiveInteger } from '../common/utils/pagination.util';
+import { ApiBearerAuth } from '@nestjs/swagger';
 
+@ApiBearerAuth()
 @Controller('employees')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class EmployeesController {

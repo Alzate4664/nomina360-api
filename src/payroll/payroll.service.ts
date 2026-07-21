@@ -1,3 +1,4 @@
+﻿import { FindPayrollPeriodsUseCase } from './use-cases/find-payroll-periods.use-case';
 import {
   BadRequestException,
   Injectable,
@@ -6,6 +7,9 @@ import {
 import { AuditService } from '../audit/audit.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { PayrollCalculatorService } from './payroll-calculator.service';
+import { CreatePayrollPeriodUseCase } from './use-cases/create-payroll-period.use-case';
+import { CreatePayrollPeriodDto } from './dto/create-payroll-period.dto';
+import { ClosePayrollPeriodUseCase } from './use-cases/close-payroll-period.use-case';
 
 @Injectable()
 export class PayrollService {
@@ -13,7 +17,14 @@ export class PayrollService {
     private readonly prisma: PrismaService,
     private readonly calculator: PayrollCalculatorService,
     private readonly auditService: AuditService,
+    private readonly createPayrollPeriodUseCase: CreatePayrollPeriodUseCase,
+    private readonly findPayrollPeriodsUseCase: FindPayrollPeriodsUseCase,
+    private readonly closePayrollPeriodUseCase: ClosePayrollPeriodUseCase,
   ) {}
+
+  async createPayrollPeriod(dto: CreatePayrollPeriodDto) {
+    return this.createPayrollPeriodUseCase.execute(dto);
+  }
 
   async calculatePayroll(
     companyId: string,
@@ -161,64 +172,22 @@ export class PayrollService {
   }
 
   async findAll(
-  companyId: string,
-  page = 1,
-  limit = 20,
-  year?: number,
-  month?: number,
-  status?: string,) {
-  const safePage = Math.max(page, 1);
-  const safeLimit = Math.min(Math.max(limit, 1), 100);
-
-  const allowedStatuses = ['DRAFT', 'CALCULATED', 'APPROVED'];
-  const normalizedStatus = status?.trim().toUpperCase();
-
-  if (
-    normalizedStatus &&
-    !allowedStatuses.includes(normalizedStatus)
+    companyId: string,
+    page = 1,
+    limit = 20,
+    year?: number,
+    month?: number,
+    status?: string,
   ) {
-    throw new BadRequestException('Estado de nómina no válido');
+    return this.findPayrollPeriodsUseCase.execute(
+      companyId,
+      page,
+      limit,
+      year,
+      month,
+      status,
+    );
   }
-
-  const where = {
-    companyId,
-    ...(year ? { year } : {}),
-    ...(month ? { month } : {}),
-    ...(normalizedStatus
-      ? {
-          status: normalizedStatus as any,
-        }
-      : {}),
-  };
-
-  const [data, total] = await this.prisma.$transaction([
-    this.prisma.payrollPeriod.findMany({
-      where,
-      orderBy: [
-        {
-          year: 'desc',
-        },
-        {
-          month: 'desc',
-        },
-      ],
-      skip: (safePage - 1) * safeLimit,
-      take: safeLimit,
-    }),
-    this.prisma.payrollPeriod.count({
-      where,
-    }),
-  ]);
-
-  return {
-    data,
-    page: safePage,
-    limit: safeLimit,
-    total,
-    totalPages: Math.ceil(total / safeLimit),
-  };
- }
-
   async findOne(companyId: string, id: string) {
     const period = await this.prisma.payrollPeriod.findFirst({
       where: {
@@ -242,11 +211,7 @@ export class PayrollService {
     return period;
   }
 
-  async approvePayroll(
-    companyId: string,
-    currentUserId: string,
-    id: string,
-  ) {
+  async approvePayroll(companyId: string, currentUserId: string, id: string) {
     const period = await this.prisma.payrollPeriod.findFirst({
       where: {
         id,
@@ -289,5 +254,9 @@ export class PayrollService {
     });
 
     return approvedPeriod;
+  }
+
+  async closePayroll(companyId: string, currentUserId: string, id: string) {
+    return this.closePayrollPeriodUseCase.execute(companyId, currentUserId, id);
   }
 }
