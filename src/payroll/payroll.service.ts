@@ -240,6 +240,7 @@ export class PayrollService {
       data: {
         status: 'APPROVED',
         approvedAt: new Date(),
+        approvedById: currentUserId,
       },
     });
 
