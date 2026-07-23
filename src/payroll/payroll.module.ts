@@ -6,6 +6,8 @@ import { PayrollCalculatorService } from './payroll-calculator.service';
 import { CreatePayrollPeriodUseCase } from './use-cases/create-payroll-period.use-case';
 import { ClosePayrollPeriodUseCase } from './use-cases/close-payroll-period.use-case';
 import { FindPayrollPeriodsUseCase } from './use-cases/find-payroll-periods.use-case';
+import { ApprovePayrollPeriodUseCase } from './use-cases/approve-payroll-period.use-case';
+import { CalculatePayrollUseCase } from './use-cases/calculate-payroll.use-case';
 
 @Module({
   imports: [
@@ -22,6 +24,8 @@ import { FindPayrollPeriodsUseCase } from './use-cases/find-payroll-periods.use-
     PayrollCalculatorService,
     CreatePayrollPeriodUseCase,
     FindPayrollPeriodsUseCase,
+    CalculatePayrollUseCase,
+    ApprovePayrollPeriodUseCase,
     ClosePayrollPeriodUseCase,
   ],
 })
