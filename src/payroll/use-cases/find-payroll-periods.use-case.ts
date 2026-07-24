@@ -17,11 +17,7 @@ export class FindPayrollPeriodsUseCase {
     const safePage = Math.max(page, 1);
     const safeLimit = Math.min(Math.max(limit, 1), 100);
 
-    const allowedStatuses: PayrollStatus[] = [
-      PayrollStatus.DRAFT,
-      PayrollStatus.CALCULATED,
-      PayrollStatus.APPROVED,
-    ];
+    const allowedStatuses: PayrollStatus[] = Object.values(PayrollStatus);
 
     const normalizedStatus = status?.trim().toUpperCase();
 

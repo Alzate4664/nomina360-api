@@ -6,6 +6,7 @@ import { ClosePayrollPeriodUseCase } from './use-cases/close-payroll-period.use-
 import { CreatePayrollPeriodUseCase } from './use-cases/create-payroll-period.use-case';
 import { FindPayrollPeriodsUseCase } from './use-cases/find-payroll-periods.use-case';
 import { FindPayrollPeriodUseCase } from './use-cases/find-payroll-period.use-case';
+import { ReopenPayrollPeriodUseCase } from './use-cases/reopen-payroll-period.use-case';
 
 @Injectable()
 export class PayrollService {
@@ -16,6 +17,7 @@ export class PayrollService {
     private readonly calculatePayrollUseCase: CalculatePayrollUseCase,
     private readonly approvePayrollPeriodUseCase: ApprovePayrollPeriodUseCase,
     private readonly closePayrollPeriodUseCase: ClosePayrollPeriodUseCase,
+    private readonly reopenPayrollPeriodUseCase: ReopenPayrollPeriodUseCase,
   ) {}
 
   async createPayrollPeriod(dto: CreatePayrollPeriodDto) {
@@ -70,5 +72,13 @@ export class PayrollService {
 
   async closePayroll(companyId: string, currentUserId: string, id: string) {
     return this.closePayrollPeriodUseCase.execute(companyId, currentUserId, id);
+  }
+
+  async reopenPayroll(companyId: string, currentUserId: string, id: string) {
+    return this.reopenPayrollPeriodUseCase.execute(
+      companyId,
+      currentUserId,
+      id,
+    );
   }
 }

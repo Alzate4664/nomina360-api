@@ -9,6 +9,7 @@ import { FindPayrollPeriodsUseCase } from './use-cases/find-payroll-periods.use-
 import { ApprovePayrollPeriodUseCase } from './use-cases/approve-payroll-period.use-case';
 import { CalculatePayrollUseCase } from './use-cases/calculate-payroll.use-case';
 import { FindPayrollPeriodUseCase } from './use-cases/find-payroll-period.use-case';
+import { ReopenPayrollPeriodUseCase } from './use-cases/reopen-payroll-period.use-case';
 
 @Module({
   imports: [
@@ -29,6 +30,7 @@ import { FindPayrollPeriodUseCase } from './use-cases/find-payroll-period.use-ca
     CalculatePayrollUseCase,
     ApprovePayrollPeriodUseCase,
     ClosePayrollPeriodUseCase,
+    ReopenPayrollPeriodUseCase,
   ],
 })
 export class PayrollModule {}

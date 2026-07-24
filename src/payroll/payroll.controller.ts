@@ -80,4 +80,10 @@ export class PayrollController {
   close(@CurrentUser() user: any, @Param('id') id: string) {
     return this.payrollService.closePayroll(user.companyId, user.sub, id);
   }
+
+  @Post(':id/reopen')
+  @Roles('OWNER', 'ADMIN')
+  reopen(@CurrentUser() user: any, @Param('id') id: string) {
+    return this.payrollService.reopenPayroll(user.companyId, user.sub, id);
+  }
 }
