@@ -132,7 +132,7 @@ export class CalculatePayrollUseCase {
             payrollItemId: payrollItem.id,
             conceptCode: concept.code,
             conceptName: concept.name,
-            type: concept.type as any,
+            type: concept.type,
             amount: concept.amount,
           },
         });

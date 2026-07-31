@@ -1,11 +1,10 @@
 import { Injectable } from '@nestjs/common';
-
-type PayrollConceptType = 'EARNING' | 'DEDUCTION' | 'OBLIGATION';
+import { ConceptType, PayrollNovelty } from '@prisma/client';
 
 interface PayrollConcept {
   code: string;
   name: string;
-  type: PayrollConceptType;
+  type: ConceptType;
   amount: number;
 }
 
@@ -14,7 +13,7 @@ export class PayrollCalculatorService {
   calculate(input: {
     baseSalary: number;
     workedDays: number;
-    novelties: any[];
+    novelties: PayrollNovelty[];
   }) {
     const dailySalary = input.baseSalary / 30;
 
@@ -26,7 +25,7 @@ export class PayrollCalculatorService {
     concepts.push({
       code: 'BASE_SALARY',
       name: 'Salario ordinario',
-      type: 'EARNING',
+      type: ConceptType.EARNING,
       amount: earnedTotal,
     });
 
@@ -38,7 +37,7 @@ export class PayrollCalculatorService {
         concepts.push({
           code: 'BONUS',
           name: novelty.description || 'Bonificación',
-          type: 'EARNING',
+          type: ConceptType.EARNING,
           amount,
         });
       }
@@ -50,7 +49,7 @@ export class PayrollCalculatorService {
         concepts.push({
           code: 'DEDUCTION',
           name: novelty.description || 'Deducción',
-          type: 'DEDUCTION',
+          type: ConceptType.DEDUCTION,
           amount,
         });
       }
@@ -63,7 +62,7 @@ export class PayrollCalculatorService {
         concepts.push({
           code: 'ABSENCE',
           name: novelty.description || 'Ausencia',
-          type: 'DEDUCTION',
+          type: ConceptType.DEDUCTION,
           amount,
         });
       }
@@ -77,14 +76,14 @@ export class PayrollCalculatorService {
     concepts.push({
       code: 'HEALTH',
       name: 'Aporte salud empleado',
-      type: 'DEDUCTION',
+      type: ConceptType.DEDUCTION,
       amount: health,
     });
 
     concepts.push({
       code: 'PENSION',
       name: 'Aporte pensión empleado',
-      type: 'DEDUCTION',
+      type: ConceptType.DEDUCTION,
       amount: pension,
     });
 
