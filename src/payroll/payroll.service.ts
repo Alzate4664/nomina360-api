@@ -1,11 +1,12 @@
 ﻿import { Injectable } from '@nestjs/common';
+import { PayrollType } from '@prisma/client';
 import { CreatePayrollPeriodDto } from './dto/create-payroll-period.dto';
 import { ApprovePayrollPeriodUseCase } from './use-cases/approve-payroll-period.use-case';
 import { CalculatePayrollUseCase } from './use-cases/calculate-payroll.use-case';
 import { ClosePayrollPeriodUseCase } from './use-cases/close-payroll-period.use-case';
 import { CreatePayrollPeriodUseCase } from './use-cases/create-payroll-period.use-case';
-import { FindPayrollPeriodsUseCase } from './use-cases/find-payroll-periods.use-case';
 import { FindPayrollPeriodUseCase } from './use-cases/find-payroll-period.use-case';
+import { FindPayrollPeriodsUseCase } from './use-cases/find-payroll-periods.use-case';
 import { ReopenPayrollPeriodUseCase } from './use-cases/reopen-payroll-period.use-case';
 
 @Injectable()
@@ -20,8 +21,8 @@ export class PayrollService {
     private readonly reopenPayrollPeriodUseCase: ReopenPayrollPeriodUseCase,
   ) {}
 
-  async createPayrollPeriod(dto: CreatePayrollPeriodDto) {
-    return this.createPayrollPeriodUseCase.execute(dto);
+  async createPayrollPeriod(companyId: string, dto: CreatePayrollPeriodDto) {
+    return this.createPayrollPeriodUseCase.execute(companyId, dto);
   }
 
   async calculatePayroll(
@@ -29,12 +30,14 @@ export class PayrollService {
     currentUserId: string,
     year: number,
     month: number,
+    payrollType: PayrollType,
   ) {
     const payrollPeriodId = await this.calculatePayrollUseCase.execute(
       companyId,
       currentUserId,
       year,
       month,
+      payrollType,
     );
 
     return this.findOne(companyId, payrollPeriodId);

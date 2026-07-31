@@ -65,83 +65,78 @@ export class EmployeesService {
     return createdEmployee;
   }
 
-  async findAll(
-  companyId: string,
-  page = 1,
-  limit = 20,
-  search?: string,
-  ) {
-  const safePage = Math.max(page, 1);
-  const safeLimit = Math.min(Math.max(limit, 1), 100);
+  async findAll(companyId: string, page = 1, limit = 20, search?: string) {
+    const safePage = Math.max(page, 1);
+    const safeLimit = Math.min(Math.max(limit, 1), 100);
 
-  const where = {
-    companyId,
-    status: 'ACTIVE' as const,
-    ...(search
-      ? {
-          OR: [
-            {
-              firstName: {
-                contains: search,
-                mode: 'insensitive' as const,
+    const where = {
+      companyId,
+      status: 'ACTIVE' as const,
+      ...(search
+        ? {
+            OR: [
+              {
+                firstName: {
+                  contains: search,
+                  mode: 'insensitive' as const,
+                },
               },
-            },
-            {
-              lastName: {
-                contains: search,
-                mode: 'insensitive' as const,
+              {
+                lastName: {
+                  contains: search,
+                  mode: 'insensitive' as const,
+                },
               },
-            },
-            {
-              documentNumber: {
-                contains: search,
-                mode: 'insensitive' as const,
+              {
+                documentNumber: {
+                  contains: search,
+                  mode: 'insensitive' as const,
+                },
               },
-            },
-            {
-              email: {
-                contains: search,
-                mode: 'insensitive' as const,
+              {
+                email: {
+                  contains: search,
+                  mode: 'insensitive' as const,
+                },
               },
-            },
-            {
-              position: {
-                contains: search,
-                mode: 'insensitive' as const,
+              {
+                position: {
+                  contains: search,
+                  mode: 'insensitive' as const,
+                },
               },
-            },
-            {
-              department: {
-                contains: search,
-                mode: 'insensitive' as const,
+              {
+                department: {
+                  contains: search,
+                  mode: 'insensitive' as const,
+                },
               },
-            },
-          ],
-        }
-      : {}),
-  };
+            ],
+          }
+        : {}),
+    };
 
-  const [data, total] = await this.prisma.$transaction([
-    this.prisma.employee.findMany({
-      where,
-      orderBy: {
-        createdAt: 'desc',
-      },
-      skip: (safePage - 1) * safeLimit,
-      take: safeLimit,
-    }),
-    this.prisma.employee.count({
-      where,
-    }),
-  ]);
+    const [data, total] = await this.prisma.$transaction([
+      this.prisma.employee.findMany({
+        where,
+        orderBy: {
+          createdAt: 'desc',
+        },
+        skip: (safePage - 1) * safeLimit,
+        take: safeLimit,
+      }),
+      this.prisma.employee.count({
+        where,
+      }),
+    ]);
 
-  return {
-    data,
-    page: safePage,
-    limit: safeLimit,
-    total,
-    totalPages: Math.ceil(total / safeLimit),
-  };
+    return {
+      data,
+      page: safePage,
+      limit: safeLimit,
+      total,
+      totalPages: Math.ceil(total / safeLimit),
+    };
   }
 
   async findOne(companyId: string, id: string) {

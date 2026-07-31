@@ -13,11 +13,12 @@ export class CreatePayrollPeriodUseCase {
   constructor(private readonly prisma: PrismaService) {}
 
   async execute(
+    companyId: string,
     dto: CreatePayrollPeriodDto,
   ): Promise<PayrollPeriodResponseDto> {
     const company = await this.prisma.company.findUnique({
       where: {
-        id: dto.companyId,
+        id: companyId,
       },
     });
 
@@ -27,7 +28,7 @@ export class CreatePayrollPeriodUseCase {
 
     const existingPeriod = await this.prisma.payrollPeriod.findFirst({
       where: {
-        companyId: dto.companyId,
+        companyId,
         year: dto.year,
         month: dto.month,
         payrollType: dto.payrollType,
@@ -58,7 +59,7 @@ export class CreatePayrollPeriodUseCase {
 
     const payrollPeriod = await this.prisma.payrollPeriod.create({
       data: {
-        companyId: dto.companyId,
+        companyId,
         name: dto.name,
         payrollType: dto.payrollType,
         year: dto.year,

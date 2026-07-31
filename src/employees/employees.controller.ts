@@ -15,8 +15,9 @@ import { RolesGuard } from '../common/guards/roles.guard';
 import { CreateEmployeeDto } from './dto/create-employee.dto';
 import { EmployeesService } from './employees.service';
 import { parsePositiveInteger } from '../common/utils/pagination.util';
-import { ApiBearerAuth } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 
+@ApiTags('Employees')
 @ApiBearerAuth()
 @Controller('employees')
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -29,21 +30,21 @@ export class EmployeesController {
     return this.employeesService.create(user.companyId, user.sub, dto);
   }
 
-@Get()
-@Roles('OWNER', 'ADMIN', 'ACCOUNTANT', 'VIEWER')
-findAll(
-  @CurrentUser() user: any,
-  @Query('page') page?: string,
-  @Query('limit') limit?: string,
-  @Query('search') search?: string,
-) {
-  return this.employeesService.findAll(
-    user.companyId,
-    parsePositiveInteger(page, 'page', 1),
-    parsePositiveInteger(limit, 'limit', 20, 100),
-    search,
-  );
-}
+  @Get()
+  @Roles('OWNER', 'ADMIN', 'ACCOUNTANT', 'VIEWER')
+  findAll(
+    @CurrentUser() user: any,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+    @Query('search') search?: string,
+  ) {
+    return this.employeesService.findAll(
+      user.companyId,
+      parsePositiveInteger(page, 'page', 1),
+      parsePositiveInteger(limit, 'limit', 20, 100),
+      search,
+    );
+  }
 
   @Get(':id')
   @Roles('OWNER', 'ADMIN', 'ACCOUNTANT', 'VIEWER')

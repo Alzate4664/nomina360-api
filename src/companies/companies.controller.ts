@@ -5,7 +5,10 @@ import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { CompaniesService } from './companies.service';
 import { UpdateCompanyDto } from './dto/update-company.dto';
+import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 
+@ApiTags('Companies')
+@ApiBearerAuth()
 @Controller('companies')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class CompaniesController {
@@ -18,8 +21,8 @@ export class CompaniesController {
   }
 
   @Patch('me')
-@Roles('OWNER', 'ADMIN')
-updateMe(@CurrentUser() user: any, @Body() dto: UpdateCompanyDto) {
-  return this.companiesService.updateMe(user.companyId, user.sub, dto);
- }
+  @Roles('OWNER', 'ADMIN')
+  updateMe(@CurrentUser() user: any, @Body() dto: UpdateCompanyDto) {
+    return this.companiesService.updateMe(user.companyId, user.sub, dto);
+  }
 }

@@ -14,9 +14,18 @@ import { AuditModule } from './audit/audit.module';
 
 @Module({
   imports: [
-    HealthModule,PrismaModule, AuthModule, CompaniesModule, EmployeesModule, PayrollNoveltiesModule, PayrollModule, ReportsModule, UsersModule, AuditModule],
+    HealthModule,
+    PrismaModule,
+    AuthModule,
+    CompaniesModule,
+    EmployeesModule,
+    PayrollNoveltiesModule,
+    PayrollModule,
+    ReportsModule,
+    UsersModule,
+    AuditModule,
+  ],
   controllers: [AppController],
   providers: [AppService],
 })
 export class AppModule {}
-

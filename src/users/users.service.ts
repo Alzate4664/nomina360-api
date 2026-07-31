@@ -60,67 +60,62 @@ export class UsersService {
     return createdUser;
   }
 
-  async findAll(
-  companyId: string,
-  page = 1,
-  limit = 20,
-  search?: string,
- ) {
-  const safePage = Math.max(page, 1);
-  const safeLimit = Math.min(Math.max(limit, 1), 100);
+  async findAll(companyId: string, page = 1, limit = 20, search?: string) {
+    const safePage = Math.max(page, 1);
+    const safeLimit = Math.min(Math.max(limit, 1), 100);
 
-  const where = {
-    companyId,
-    ...(search
-      ? {
-          OR: [
-            {
-              name: {
-                contains: search,
-                mode: 'insensitive' as const,
+    const where = {
+      companyId,
+      ...(search
+        ? {
+            OR: [
+              {
+                name: {
+                  contains: search,
+                  mode: 'insensitive' as const,
+                },
               },
-            },
-            {
-              email: {
-                contains: search,
-                mode: 'insensitive' as const,
+              {
+                email: {
+                  contains: search,
+                  mode: 'insensitive' as const,
+                },
               },
-            },
-          ],
-        }
-      : {}),
-  };
+            ],
+          }
+        : {}),
+    };
 
-  const [data, total] = await this.prisma.$transaction([
-    this.prisma.user.findMany({
-      where,
-      select: {
-        id: true,
-        companyId: true,
-        name: true,
-        email: true,
-        role: true,
-        isActive: true,
-        createdAt: true,
-      },
-      orderBy: {
-        createdAt: 'desc',
-      },
-      skip: (safePage - 1) * safeLimit,
-      take: safeLimit,
-    }),
-    this.prisma.user.count({
-      where,
-    }),
-  ]);
+    const [data, total] = await this.prisma.$transaction([
+      this.prisma.user.findMany({
+        where,
+        select: {
+          id: true,
+          companyId: true,
+          name: true,
+          email: true,
+          role: true,
+          isActive: true,
+          createdAt: true,
+        },
+        orderBy: {
+          createdAt: 'desc',
+        },
+        skip: (safePage - 1) * safeLimit,
+        take: safeLimit,
+      }),
+      this.prisma.user.count({
+        where,
+      }),
+    ]);
 
-  return {
-    data,
-    page: safePage,
-    limit: safeLimit,
-    total,
-    totalPages: Math.ceil(total / safeLimit),
-  };
+    return {
+      data,
+      page: safePage,
+      limit: safeLimit,
+      total,
+      totalPages: Math.ceil(total / safeLimit),
+    };
   }
 
   async findOne(companyId: string, id: string) {
@@ -156,11 +151,11 @@ export class UsersService {
     const user = await this.findOne(companyId, id);
 
     if (id === currentUserId && dto.isActive === false) {
-  throw new BadRequestException('No puedes desactivar tu propio usuario');
+      throw new BadRequestException('No puedes desactivar tu propio usuario');
     }
 
     if (id === currentUserId && dto.role && dto.role !== user.role) {
-  throw new BadRequestException('No puedes cambiar tu propio rol');
+      throw new BadRequestException('No puedes cambiar tu propio rol');
     }
 
     if (dto.email && dto.email !== user.email) {

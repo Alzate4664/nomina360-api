@@ -1,21 +1,22 @@
+import { NoveltyType } from '@prisma/client';
 import {
-  IsInt,
+  IsEnum,
   IsNotEmpty,
   IsNumber,
   IsOptional,
   IsString,
-  Max,
-  Min,
+  IsUUID,
 } from 'class-validator';
 
 export class CreatePayrollNoveltyDto {
-  @IsString()
-  @IsNotEmpty()
-  employeeId: string;
+  @IsUUID()
+  employeeId!: string;
 
-  @IsString()
-  @IsNotEmpty()
-  type: string;
+  @IsUUID()
+  payrollPeriodId!: string;
+
+  @IsEnum(NoveltyType)
+  type!: NoveltyType;
 
   @IsOptional()
   @IsNumber()
@@ -27,14 +28,6 @@ export class CreatePayrollNoveltyDto {
 
   @IsOptional()
   @IsString()
+  @IsNotEmpty()
   description?: string;
-
-  @IsInt()
-  @Min(2024)
-  periodYear: number;
-
-  @IsInt()
-  @Min(1)
-  @Max(12)
-  periodMonth: number;
 }

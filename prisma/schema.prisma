@@ -91,8 +91,9 @@ model PayrollPeriod {
   createdAt  DateTime  @default(now())
   updatedAt  DateTime  @default(now()) @updatedAt
 
-  company Company       @relation(fields: [companyId], references: [id])
-  items   PayrollItem[]
+  company   Company          @relation(fields: [companyId], references: [id])
+  items     PayrollItem[]
+  novelties PayrollNovelty[]
 
   @@unique([companyId, year, month, payrollType])
   @@index([companyId, status])
@@ -130,18 +131,20 @@ model PayrollConceptDetail {
 }
 
 model PayrollNovelty {
-  id          String      @id @default(uuid())
-  companyId   String
-  employeeId  String
-  type        NoveltyType
-  quantity    Decimal?
-  amount      Decimal?
-  description String?
-  periodYear  Int
-  periodMonth Int
-  createdAt   DateTime    @default(now())
+  id              String      @id @default(uuid())
+  companyId       String
+  employeeId      String
+  payrollPeriodId String
+  type            NoveltyType
+  quantity        Decimal?
+  amount          Decimal?
+  description     String?
+  createdAt       DateTime    @default(now())
 
-  employee Employee @relation(fields: [employeeId], references: [id])
+  employee      Employee      @relation(fields: [employeeId], references: [id])
+  payrollPeriod PayrollPeriod @relation(fields: [payrollPeriodId], references: [id])
+
+  @@index([payrollPeriodId])
 }
 
 enum CompanyStatus {

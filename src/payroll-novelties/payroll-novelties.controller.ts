@@ -18,7 +18,10 @@ import {
   parseOptionalInteger,
   parsePositiveInteger,
 } from '../common/utils/pagination.util';
+import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 
+@ApiTags('Payroll Novelties')
+@ApiBearerAuth()
 @Controller('payroll-novelties')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class PayrollNoveltiesController {
@@ -32,25 +35,25 @@ export class PayrollNoveltiesController {
     return this.payrollNoveltiesService.create(user.companyId, user.sub, dto);
   }
 
-@Get()
-@Roles('OWNER', 'ADMIN', 'ACCOUNTANT', 'VIEWER')
-findAll(
-  @CurrentUser() user: any,
-  @Query('year') year?: string,
-  @Query('month') month?: string,
-  @Query('page') page?: string,
-  @Query('limit') limit?: string,
-  @Query('search') search?: string,
-) {
-  return this.payrollNoveltiesService.findAll(
-    user.companyId,
-    parseOptionalInteger(year, 'year', 2000, 2100),
-    parseOptionalInteger(month, 'month', 1, 12),
-    parsePositiveInteger(page, 'page', 1),
-    parsePositiveInteger(limit, 'limit', 20, 100),
-    search,
-  );
-}
+  @Get()
+  @Roles('OWNER', 'ADMIN', 'ACCOUNTANT', 'VIEWER')
+  findAll(
+    @CurrentUser() user: any,
+    @Query('year') year?: string,
+    @Query('month') month?: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+    @Query('search') search?: string,
+  ) {
+    return this.payrollNoveltiesService.findAll(
+      user.companyId,
+      parseOptionalInteger(year, 'year', 2000, 2100),
+      parseOptionalInteger(month, 'month', 1, 12),
+      parsePositiveInteger(page, 'page', 1),
+      parsePositiveInteger(limit, 'limit', 20, 100),
+      search,
+    );
+  }
 
   @Get(':id')
   @Roles('OWNER', 'ADMIN', 'ACCOUNTANT', 'VIEWER')
@@ -59,12 +62,8 @@ findAll(
   }
 
   @Delete(':id')
-@Roles('OWNER', 'ADMIN', 'ACCOUNTANT')
-remove(@CurrentUser() user: any, @Param('id') id: string) {
-  return this.payrollNoveltiesService.remove(
-    user.companyId,
-    id,
-    user.sub,
-  );
- }
+  @Roles('OWNER', 'ADMIN', 'ACCOUNTANT')
+  remove(@CurrentUser() user: any, @Param('id') id: string) {
+    return this.payrollNoveltiesService.remove(user.companyId, id, user.sub);
+  }
 }

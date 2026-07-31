@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import * as ExcelJS from 'exceljs';
+import { PayrollType } from '@prisma/client';
 
 @Injectable()
 export class ReportsService {
@@ -10,21 +11,23 @@ export class ReportsService {
     companyId: string,
     year: number,
     month: number,
+    payrollType: PayrollType,
   ) {
     const period = await this.prisma.payrollPeriod.findFirst({
       where: {
         companyId,
         year,
         month,
+        payrollType,
       },
+     include: {
+     items: {
       include: {
-        items: {
-          include: {
-            employee: true,
-            concepts: true,
-          },
-        },
+        employee: true,
+        concepts: true,
       },
+     },
+     },
     });
 
     if (!period) {

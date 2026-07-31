@@ -2,6 +2,7 @@ import { BadRequestException, Injectable } from '@nestjs/common';
 import { AuditService } from '../../audit/audit.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { PayrollCalculatorService } from '../payroll-calculator.service';
+import { PayrollStatus, PayrollType } from '@prisma/client';
 
 @Injectable()
 export class CalculatePayrollUseCase {
@@ -16,19 +17,30 @@ export class CalculatePayrollUseCase {
     currentUserId: string,
     year: number,
     month: number,
+    payrollType: PayrollType,
   ) {
     const existingPeriod = await this.prisma.payrollPeriod.findFirst({
       where: {
         companyId,
         year,
         month,
+        payrollType,
       },
     });
 
-    if (existingPeriod?.status === 'APPROVED') {
-      throw new BadRequestException(
-        'Este periodo ya fue aprobado y no se puede recalcular',
-      );
+    if (existingPeriod) {
+      const allowedStatuses: PayrollStatus[] = [
+        PayrollStatus.DRAFT,
+        PayrollStatus.COLLECTING_NOVELTIES,
+        PayrollStatus.CALCULATED,
+        PayrollStatus.REOPENED,
+      ];
+
+      if (!allowedStatuses.includes(existingPeriod.status)) {
+        throw new BadRequestException(
+          `El período en estado ${existingPeriod.status} no puede calcularse ni recalcularse`,
+        );
+      }
     }
 
     const employees = await this.prisma.employee.findMany({
@@ -52,7 +64,8 @@ export class CalculatePayrollUseCase {
           companyId,
           year,
           month,
-          status: 'DRAFT',
+          payrollType,
+          status: PayrollStatus.DRAFT,
         },
       });
     }
@@ -91,8 +104,7 @@ export class CalculatePayrollUseCase {
         where: {
           companyId,
           employeeId: employee.id,
-          periodYear: year,
-          periodMonth: month,
+          payrollPeriodId: period.id,
         },
       });
 
@@ -132,7 +144,7 @@ export class CalculatePayrollUseCase {
         id: period.id,
       },
       data: {
-        status: 'CALCULATED',
+        status: PayrollStatus.CALCULATED,
       },
     });
 

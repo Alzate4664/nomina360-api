@@ -6,6 +6,7 @@ import {
 import { AuditService } from '../audit/audit.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreatePayrollNoveltyDto } from './dto/create-payroll-novelty.dto';
+import { PayrollStatus } from '@prisma/client';
 
 @Injectable()
 export class PayrollNoveltiesService {
@@ -31,32 +32,39 @@ export class PayrollNoveltiesService {
       throw new NotFoundException('Colaborador no encontrado');
     }
 
-    const allowedTypes = [
-      'OVERTIME',
-      'NIGHT_SURCHARGE',
-      'SUNDAY_SURCHARGE',
-      'HOLIDAY_SURCHARGE',
-      'BONUS',
-      'DEDUCTION',
-      'ABSENCE',
-      'VACATION',
-      'SICK_LEAVE',
+    const payrollPeriod = await this.prisma.payrollPeriod.findFirst({
+      where: {
+        id: dto.payrollPeriodId,
+        companyId,
+      },
+    });
+
+    if (!payrollPeriod) {
+      throw new NotFoundException('Período de nómina no encontrado');
+    }
+
+    const allowedStatuses: PayrollStatus[] = [
+      PayrollStatus.DRAFT,
+      PayrollStatus.COLLECTING_NOVELTIES,
+      PayrollStatus.CALCULATED,
+      PayrollStatus.REOPENED,
     ];
 
-    if (!allowedTypes.includes(dto.type)) {
-      throw new BadRequestException('Tipo de novedad no válido');
+    if (!allowedStatuses.includes(payrollPeriod.status)) {
+      throw new BadRequestException(
+        `No se pueden registrar novedades en un período con estado ${payrollPeriod.status}`,
+      );
     }
 
     const createdNovelty = await this.prisma.payrollNovelty.create({
       data: {
         companyId,
         employeeId: dto.employeeId,
-        type: dto.type as any,
+        payrollPeriodId: payrollPeriod.id,
+        type: dto.type,
         quantity: dto.quantity,
         amount: dto.amount,
         description: dto.description,
-        periodYear: dto.periodYear,
-        periodMonth: dto.periodMonth,
       },
     });
 
@@ -144,15 +152,23 @@ export class PayrollNoveltiesService {
     }
 
     const where = {
-      companyId,
-      ...(periodYear ? { periodYear } : {}),
-      ...(periodMonth ? { periodMonth } : {}),
-      ...(searchConditions.length > 0
-        ? {
-            OR: searchConditions,
-          }
-        : {}),
-    };
+    companyId,
+    ...(periodYear || periodMonth
+    ? {
+        payrollPeriod: {
+          is: {
+            ...(periodYear ? { year: periodYear } : {}),
+            ...(periodMonth ? { month: periodMonth } : {}),
+          },
+        },
+      }
+    : {}),
+    ...(searchConditions.length > 0
+    ? {
+        OR: searchConditions,
+      }
+    : {}),
+   };
 
     const [data, total] = await this.prisma.$transaction([
       this.prisma.payrollNovelty.findMany({
