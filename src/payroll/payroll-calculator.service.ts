@@ -4,6 +4,7 @@ import { AbsenceCalculator } from './calculator/concepts/absence.calculator';
 import { BaseSalaryCalculator } from './calculator/concepts/base-salary.calculator';
 import { BonusCalculator } from './calculator/concepts/bonus.calculator';
 import { DeductionCalculator } from './calculator/concepts/deduction.calculator';
+import { HealthCalculator } from './calculator/concepts/health.calculator';
 
 interface PayrollConcept {
   code: string;
@@ -19,6 +20,7 @@ export class PayrollCalculatorService {
     private readonly bonusCalculator: BonusCalculator,
     private readonly absenceCalculator: AbsenceCalculator,
     private readonly deductionCalculator: DeductionCalculator,
+    private readonly healthCalculator: HealthCalculator,
   ) {}
 
   calculate(input: {
@@ -43,26 +45,25 @@ export class PayrollCalculatorService {
     const deductionResult = this.deductionCalculator.calculate(input.novelties);
 
     let earnedTotal = baseSalaryResult.earned + bonusResult.earned;
-    let deductionsTotal = absenceResult.deductions + deductionResult.deductions;
+
+    const healthResult = this.healthCalculator.calculate(earnedTotal);
+
+    let deductionsTotal =
+      absenceResult.deductions +
+      deductionResult.deductions +
+      healthResult.deductions;
 
     const concepts: PayrollConcept[] = [
       ...baseSalaryResult.concepts,
       ...bonusResult.concepts,
       ...absenceResult.concepts,
       ...deductionResult.concepts,
+      ...healthResult.concepts,
     ];
 
-    const health = earnedTotal * 0.04;
     const pension = earnedTotal * 0.04;
 
-    deductionsTotal += health + pension;
-
-    concepts.push({
-      code: 'HEALTH',
-      name: 'Aporte salud empleado',
-      type: ConceptType.DEDUCTION,
-      amount: health,
-    });
+    deductionsTotal += pension;
 
     concepts.push({
       code: 'PENSION',
