@@ -7,6 +7,7 @@ import { RolesGuard } from '../common/guards/roles.guard';
 import { ReportsService } from './reports.service';
 import { ApiBearerAuth, ApiQuery, ApiTags } from '@nestjs/swagger';
 import { PayrollType } from '@prisma/client';
+import type { AuthenticatedUser } from '../common/types/authenticated-user.type';
 
 @ApiTags('reports')
 @ApiBearerAuth()
@@ -25,7 +26,7 @@ export class ReportsController {
   @Get('payroll-monthly')
   @Roles('OWNER', 'ADMIN', 'ACCOUNTANT')
   async payrollMonthly(
-    @CurrentUser() user: any,
+    @CurrentUser() user: AuthenticatedUser,
     @Query('year') year: string,
     @Query('month') month: string,
     @Query('payrollType') payrollType: PayrollType,

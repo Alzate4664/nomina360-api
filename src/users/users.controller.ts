@@ -18,6 +18,7 @@ import { UpdateUserDto } from './dto/update-user.dto';
 import { UsersService } from './users.service';
 import { parsePositiveInteger } from '../common/utils/pagination.util';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
+import type { AuthenticatedUser } from '../common/types/authenticated-user.type';
 
 @ApiTags('users')
 @ApiBearerAuth()
@@ -28,14 +29,14 @@ export class UsersController {
 
   @Post()
   @Roles('OWNER', 'ADMIN')
-  create(@CurrentUser() user: any, @Body() dto: CreateUserDto) {
+  create(@CurrentUser() user: AuthenticatedUser, @Body() dto: CreateUserDto) {
     return this.usersService.create(user.companyId, user.sub, dto);
   }
 
   @Get()
   @Roles('OWNER', 'ADMIN')
   findAll(
-    @CurrentUser() user: any,
+    @CurrentUser() user: AuthenticatedUser,
     @Query('page') page?: string,
     @Query('limit') limit?: string,
     @Query('search') search?: string,
@@ -50,14 +51,14 @@ export class UsersController {
 
   @Get(':id')
   @Roles('OWNER', 'ADMIN')
-  findOne(@CurrentUser() user: any, @Param('id') id: string) {
+  findOne(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
     return this.usersService.findOne(user.companyId, id);
   }
 
   @Patch(':id')
   @Roles('OWNER', 'ADMIN')
   update(
-    @CurrentUser() user: any,
+    @CurrentUser() user: AuthenticatedUser,
     @Param('id') id: string,
     @Body() dto: UpdateUserDto,
   ) {
@@ -66,7 +67,7 @@ export class UsersController {
 
   @Delete(':id')
   @Roles('OWNER', 'ADMIN')
-  remove(@CurrentUser() user: any, @Param('id') id: string) {
+  remove(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
     return this.usersService.remove(user.companyId, id, user.sub);
   }
 }

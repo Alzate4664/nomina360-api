@@ -18,6 +18,7 @@ import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { Roles } from '../common/decorators/roles.decorator';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
+import type { AuthenticatedUser } from '../common/types/authenticated-user.type';
 import {
   parseOptionalInteger,
   parsePositiveInteger,
@@ -53,7 +54,10 @@ export class PayrollController {
     description: 'El usuario no tiene permisos para calcular la nómina.',
   })
   @Roles('OWNER', 'ADMIN', 'ACCOUNTANT')
-  calculate(@CurrentUser() user: any, @Body() dto: CalculatePayrollDto) {
+  calculate(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: CalculatePayrollDto,
+  ) {
     return this.payrollService.calculatePayroll(
       user.companyId,
       user.sub,
@@ -67,7 +71,7 @@ export class PayrollController {
   @ApiOperation({ summary: 'Crear un período de nómina' })
   @Roles('OWNER', 'ADMIN', 'ACCOUNTANT')
   createPayrollPeriod(
-    @CurrentUser() user: any,
+    @CurrentUser() user: AuthenticatedUser,
     @Body() dto: CreatePayrollPeriodDto,
   ) {
     return this.payrollService.createPayrollPeriod(user.companyId, dto);
@@ -94,7 +98,7 @@ export class PayrollController {
   })
   @Roles('OWNER', 'ADMIN', 'ACCOUNTANT', 'VIEWER')
   findAll(
-    @CurrentUser() user: any,
+    @CurrentUser() user: AuthenticatedUser,
     @Query('page') page?: string,
     @Query('limit') limit?: string,
     @Query('year') year?: string,
@@ -114,7 +118,7 @@ export class PayrollController {
   @Get(':id')
   @ApiOperation({ summary: 'Consultar un período de nómina' })
   @Roles('OWNER', 'ADMIN', 'ACCOUNTANT', 'VIEWER')
-  findOne(@CurrentUser() user: any, @Param('id') id: string) {
+  findOne(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
     return this.payrollService.findOne(user.companyId, id);
   }
 
@@ -141,7 +145,7 @@ export class PayrollController {
     description: 'Período de nómina no encontrado.',
   })
   @Roles('OWNER', 'ADMIN')
-  approve(@CurrentUser() user: any, @Param('id') id: string) {
+  approve(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
     return this.payrollService.approvePayroll(user.companyId, user.sub, id);
   }
 
@@ -168,7 +172,7 @@ export class PayrollController {
     description: 'Período de nómina no encontrado.',
   })
   @Roles('OWNER', 'ADMIN')
-  close(@CurrentUser() user: any, @Param('id') id: string) {
+  close(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
     return this.payrollService.closePayroll(user.companyId, user.sub, id);
   }
 
@@ -195,7 +199,7 @@ export class PayrollController {
     description: 'Período de nómina no encontrado.',
   })
   @Roles('OWNER', 'ADMIN')
-  reopen(@CurrentUser() user: any, @Param('id') id: string) {
+  reopen(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
     return this.payrollService.reopenPayroll(user.companyId, user.sub, id);
   }
 }

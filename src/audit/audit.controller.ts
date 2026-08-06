@@ -11,6 +11,7 @@ import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { parsePositiveInteger } from '../common/utils/pagination.util';
 import { AuditService } from './audit.service';
+import type { AuthenticatedUser } from '../common/types/authenticated-user.type';
 
 @ApiTags('Audit')
 @ApiBearerAuth()
@@ -50,7 +51,7 @@ export class AuditController {
   @Get()
   @Roles('OWNER', 'ADMIN')
   findAll(
-    @CurrentUser() user: any,
+    @CurrentUser() user: AuthenticatedUser,
     @Query('action') action?: string,
     @Query('entity') entity?: string,
     @Query('userId') userId?: string,

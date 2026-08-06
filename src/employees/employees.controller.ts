@@ -16,6 +16,7 @@ import { CreateEmployeeDto } from './dto/create-employee.dto';
 import { EmployeesService } from './employees.service';
 import { parsePositiveInteger } from '../common/utils/pagination.util';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
+import type { AuthenticatedUser } from '../common/types/authenticated-user.type';
 
 @ApiTags('Employees')
 @ApiBearerAuth()
@@ -26,14 +27,17 @@ export class EmployeesController {
 
   @Post()
   @Roles('OWNER', 'ADMIN')
-  create(@CurrentUser() user: any, @Body() dto: CreateEmployeeDto) {
+  create(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: CreateEmployeeDto,
+  ) {
     return this.employeesService.create(user.companyId, user.sub, dto);
   }
 
   @Get()
   @Roles('OWNER', 'ADMIN', 'ACCOUNTANT', 'VIEWER')
   findAll(
-    @CurrentUser() user: any,
+    @CurrentUser() user: AuthenticatedUser,
     @Query('page') page?: string,
     @Query('limit') limit?: string,
     @Query('search') search?: string,
@@ -48,13 +52,13 @@ export class EmployeesController {
 
   @Get(':id')
   @Roles('OWNER', 'ADMIN', 'ACCOUNTANT', 'VIEWER')
-  findOne(@CurrentUser() user: any, @Param('id') id: string) {
+  findOne(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
     return this.employeesService.findOne(user.companyId, id);
   }
 
   @Delete(':id')
   @Roles('OWNER', 'ADMIN')
-  remove(@CurrentUser() user: any, @Param('id') id: string) {
+  remove(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
     return this.employeesService.remove(user.companyId, id, user.sub);
   }
 }

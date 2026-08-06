@@ -24,6 +24,7 @@ import {
   ApiQuery,
   ApiTags,
 } from '@nestjs/swagger';
+import type { AuthenticatedUser } from '../common/types/authenticated-user.type';
 
 @ApiTags('Payroll Novelties')
 @ApiBearerAuth()
@@ -37,7 +38,10 @@ export class PayrollNoveltiesController {
   @ApiOperation({ summary: 'Registrar una novedad de nómina' })
   @Post()
   @Roles('OWNER', 'ADMIN', 'ACCOUNTANT')
-  create(@CurrentUser() user: any, @Body() dto: CreatePayrollNoveltyDto) {
+  create(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: CreatePayrollNoveltyDto,
+  ) {
     return this.payrollNoveltiesService.create(user.companyId, user.sub, dto);
   }
 
@@ -51,7 +55,7 @@ export class PayrollNoveltiesController {
   @Get()
   @Roles('OWNER', 'ADMIN', 'ACCOUNTANT', 'VIEWER')
   findAll(
-    @CurrentUser() user: any,
+    @CurrentUser() user: AuthenticatedUser,
     @Query('year') year?: string,
     @Query('month') month?: string,
     @Query('page') page?: string,
@@ -71,14 +75,14 @@ export class PayrollNoveltiesController {
   @ApiOperation({ summary: 'Eliminar una novedad de nómina' })
   @Get(':id')
   @Roles('OWNER', 'ADMIN', 'ACCOUNTANT', 'VIEWER')
-  findOne(@CurrentUser() user: any, @Param('id') id: string) {
+  findOne(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
     return this.payrollNoveltiesService.findOne(user.companyId, id);
   }
 
   @ApiOperation({ summary: 'Eliminar una novedad de nómina' })
   @Delete(':id')
   @Roles('OWNER', 'ADMIN', 'ACCOUNTANT')
-  remove(@CurrentUser() user: any, @Param('id') id: string) {
+  remove(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
     return this.payrollNoveltiesService.remove(user.companyId, id, user.sub);
   }
 }

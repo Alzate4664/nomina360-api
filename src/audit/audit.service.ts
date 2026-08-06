@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import type { Prisma } from '@prisma/client';
 
 interface CreateAuditLogInput {
   companyId?: string;
@@ -7,8 +8,8 @@ interface CreateAuditLogInput {
   action: string;
   entity: string;
   entityId?: string;
-  oldValue?: any;
-  newValue?: any;
+  oldValue?: Prisma.InputJsonValue;
+  newValue?: Prisma.InputJsonValue;
 }
 
 @Injectable()

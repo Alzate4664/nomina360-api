@@ -6,7 +6,7 @@ import {
 import { AuditService } from '../audit/audit.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreatePayrollNoveltyDto } from './dto/create-payroll-novelty.dto';
-import { PayrollStatus } from '@prisma/client';
+import { NoveltyType, PayrollStatus, Prisma } from '@prisma/client';
 
 @Injectable()
 export class PayrollNoveltiesService {
@@ -106,7 +106,7 @@ export class PayrollNoveltiesService {
     const normalizedSearch = search?.trim();
     const normalizedType = normalizedSearch?.toUpperCase();
 
-    const searchConditions: any[] = [];
+    const searchConditions: Prisma.PayrollNoveltyWhereInput[] = [];
 
     if (normalizedSearch) {
       searchConditions.push(
@@ -146,29 +146,29 @@ export class PayrollNoveltiesService {
 
       if (normalizedType && allowedTypes.includes(normalizedType)) {
         searchConditions.push({
-          type: normalizedType as any,
+          type: normalizedType as NoveltyType,
         });
       }
     }
 
     const where = {
-    companyId,
-    ...(periodYear || periodMonth
-    ? {
-        payrollPeriod: {
-          is: {
-            ...(periodYear ? { year: periodYear } : {}),
-            ...(periodMonth ? { month: periodMonth } : {}),
-          },
-        },
-      }
-    : {}),
-    ...(searchConditions.length > 0
-    ? {
-        OR: searchConditions,
-      }
-    : {}),
-   };
+      companyId,
+      ...(periodYear || periodMonth
+        ? {
+            payrollPeriod: {
+              is: {
+                ...(periodYear ? { year: periodYear } : {}),
+                ...(periodMonth ? { month: periodMonth } : {}),
+              },
+            },
+          }
+        : {}),
+      ...(searchConditions.length > 0
+        ? {
+            OR: searchConditions,
+          }
+        : {}),
+    };
 
     const [data, total] = await this.prisma.$transaction([
       this.prisma.payrollNovelty.findMany({
