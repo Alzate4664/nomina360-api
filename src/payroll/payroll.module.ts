@@ -15,6 +15,7 @@ import { BonusCalculator } from './calculator/concepts/bonus.calculator';
 import { AbsenceCalculator } from './calculator/concepts/absence.calculator';
 import { DeductionCalculator } from './calculator/concepts/deduction.calculator';
 import { HealthCalculator } from './calculator/concepts/health.calculator';
+import { PensionCalculator } from './calculator/concepts/pension.calculator';
 
 @Module({
   imports: [
@@ -34,6 +35,7 @@ import { HealthCalculator } from './calculator/concepts/health.calculator';
     AbsenceCalculator,
     DeductionCalculator,
     HealthCalculator,
+    PensionCalculator,
     CreatePayrollPeriodUseCase,
     FindPayrollPeriodsUseCase,
     FindPayrollPeriodUseCase,
