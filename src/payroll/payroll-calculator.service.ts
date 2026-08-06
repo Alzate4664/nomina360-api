@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { ConceptType, PayrollNovelty } from '@prisma/client';
+import { BaseSalaryCalculator } from './calculator/concepts/base-salary.calculator';
 
 interface PayrollConcept {
   code: string;
@@ -10,6 +11,8 @@ interface PayrollConcept {
 
 @Injectable()
 export class PayrollCalculatorService {
+  constructor(private readonly baseSalaryCalculator: BaseSalaryCalculator) {}
+
   calculate(input: {
     baseSalary: number;
     workedDays: number;
@@ -17,17 +20,15 @@ export class PayrollCalculatorService {
   }) {
     const dailySalary = input.baseSalary / 30;
 
-    let earnedTotal = dailySalary * input.workedDays;
+    const baseSalaryResult = this.baseSalaryCalculator.calculate(
+      input.baseSalary,
+      input.workedDays,
+    );
+
+    let earnedTotal = baseSalaryResult.earned;
     let deductionsTotal = 0;
 
-    const concepts: PayrollConcept[] = [];
-
-    concepts.push({
-      code: 'BASE_SALARY',
-      name: 'Salario ordinario',
-      type: ConceptType.EARNING,
-      amount: earnedTotal,
-    });
+    const concepts: PayrollConcept[] = [...baseSalaryResult.concepts];
 
     for (const novelty of input.novelties) {
       if (novelty.type === 'BONUS') {

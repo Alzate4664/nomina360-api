@@ -3,6 +3,7 @@ import { JwtModule } from '@nestjs/jwt';
 import { PayrollController } from './payroll.controller';
 import { PayrollService } from './payroll.service';
 import { PayrollCalculatorService } from './payroll-calculator.service';
+import { BaseSalaryCalculator } from './calculator/concepts/base-salary.calculator';
 import { CreatePayrollPeriodUseCase } from './use-cases/create-payroll-period.use-case';
 import { ClosePayrollPeriodUseCase } from './use-cases/close-payroll-period.use-case';
 import { FindPayrollPeriodsUseCase } from './use-cases/find-payroll-periods.use-case';
@@ -24,6 +25,7 @@ import { ReopenPayrollPeriodUseCase } from './use-cases/reopen-payroll-period.us
   providers: [
     PayrollService,
     PayrollCalculatorService,
+    BaseSalaryCalculator,
     CreatePayrollPeriodUseCase,
     FindPayrollPeriodsUseCase,
     FindPayrollPeriodUseCase,
