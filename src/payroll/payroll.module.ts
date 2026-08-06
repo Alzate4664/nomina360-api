@@ -11,6 +11,7 @@ import { ApprovePayrollPeriodUseCase } from './use-cases/approve-payroll-period.
 import { CalculatePayrollUseCase } from './use-cases/calculate-payroll.use-case';
 import { FindPayrollPeriodUseCase } from './use-cases/find-payroll-period.use-case';
 import { ReopenPayrollPeriodUseCase } from './use-cases/reopen-payroll-period.use-case';
+import { BonusCalculator } from './calculator/concepts/bonus.calculator';
 
 @Module({
   imports: [
@@ -26,6 +27,7 @@ import { ReopenPayrollPeriodUseCase } from './use-cases/reopen-payroll-period.us
     PayrollService,
     PayrollCalculatorService,
     BaseSalaryCalculator,
+    BonusCalculator,
     CreatePayrollPeriodUseCase,
     FindPayrollPeriodsUseCase,
     FindPayrollPeriodUseCase,

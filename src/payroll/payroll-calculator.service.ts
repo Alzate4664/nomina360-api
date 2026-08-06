@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { ConceptType, PayrollNovelty } from '@prisma/client';
 import { BaseSalaryCalculator } from './calculator/concepts/base-salary.calculator';
+import { BonusCalculator } from './calculator/concepts/bonus.calculator';
 
 interface PayrollConcept {
   code: string;
@@ -11,7 +12,10 @@ interface PayrollConcept {
 
 @Injectable()
 export class PayrollCalculatorService {
-  constructor(private readonly baseSalaryCalculator: BaseSalaryCalculator) {}
+  constructor(
+    private readonly baseSalaryCalculator: BaseSalaryCalculator,
+    private readonly bonusCalculator: BonusCalculator,
+  ) {}
 
   calculate(input: {
     baseSalary: number;
@@ -25,24 +29,17 @@ export class PayrollCalculatorService {
       input.workedDays,
     );
 
-    let earnedTotal = baseSalaryResult.earned;
+    const bonusResult = this.bonusCalculator.calculate(input.novelties);
+
+    let earnedTotal = baseSalaryResult.earned + bonusResult.earned;
     let deductionsTotal = 0;
 
-    const concepts: PayrollConcept[] = [...baseSalaryResult.concepts];
+    const concepts: PayrollConcept[] = [
+      ...baseSalaryResult.concepts,
+      ...bonusResult.concepts,
+    ];
 
     for (const novelty of input.novelties) {
-      if (novelty.type === 'BONUS') {
-        const amount = Number(novelty.amount ?? 0);
-        earnedTotal += amount;
-
-        concepts.push({
-          code: 'BONUS',
-          name: novelty.description || 'Bonificación',
-          type: ConceptType.EARNING,
-          amount,
-        });
-      }
-
       if (novelty.type === 'DEDUCTION') {
         const amount = Number(novelty.amount ?? 0);
         deductionsTotal += amount;
