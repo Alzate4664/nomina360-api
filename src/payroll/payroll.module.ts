@@ -17,6 +17,7 @@ import { DeductionCalculator } from './calculator/concepts/deduction.calculator'
 import { HealthCalculator } from './calculator/concepts/health.calculator';
 import { PensionCalculator } from './calculator/concepts/pension.calculator';
 import { OvertimeCalculator } from './calculator/concepts/overtime.calculator';
+import { NightSurchargeCalculator } from './calculator/concepts/night-surcharge.calculator';
 
 @Module({
   imports: [
@@ -38,6 +39,7 @@ import { OvertimeCalculator } from './calculator/concepts/overtime.calculator';
     HealthCalculator,
     PensionCalculator,
     OvertimeCalculator,
+    NightSurchargeCalculator,
     CreatePayrollPeriodUseCase,
     FindPayrollPeriodsUseCase,
     FindPayrollPeriodUseCase,

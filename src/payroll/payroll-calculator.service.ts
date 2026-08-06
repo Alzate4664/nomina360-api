@@ -7,6 +7,7 @@ import { DeductionCalculator } from './calculator/concepts/deduction.calculator'
 import { HealthCalculator } from './calculator/concepts/health.calculator';
 import { PensionCalculator } from './calculator/concepts/pension.calculator';
 import { OvertimeCalculator } from './calculator/concepts/overtime.calculator';
+import { NightSurchargeCalculator } from './calculator/concepts/night-surcharge.calculator';
 
 interface PayrollConcept {
   code: string;
@@ -25,6 +26,7 @@ export class PayrollCalculatorService {
     private readonly healthCalculator: HealthCalculator,
     private readonly pensionCalculator: PensionCalculator,
     private readonly overtimeCalculator: OvertimeCalculator,
+    private readonly nightSurchargeCalculator: NightSurchargeCalculator,
   ) {}
 
   calculate(input: {
@@ -46,6 +48,11 @@ export class PayrollCalculatorService {
       input.novelties,
     );
 
+    const nightSurchargeResult = this.nightSurchargeCalculator.calculate(
+      input.baseSalary,
+      input.novelties,
+    );
+
     const absenceResult = this.absenceCalculator.calculate(
       dailySalary,
       input.novelties,
@@ -54,7 +61,10 @@ export class PayrollCalculatorService {
     const deductionResult = this.deductionCalculator.calculate(input.novelties);
 
     let earnedTotal =
-      baseSalaryResult.earned + bonusResult.earned + overtimeResult.earned;
+      baseSalaryResult.earned +
+      bonusResult.earned +
+      overtimeResult.earned +
+      nightSurchargeResult.earned;
 
     const healthResult = this.healthCalculator.calculate(earnedTotal);
 
@@ -70,6 +80,7 @@ export class PayrollCalculatorService {
       ...baseSalaryResult.concepts,
       ...bonusResult.concepts,
       ...overtimeResult.concepts,
+      ...nightSurchargeResult.concepts,
       ...absenceResult.concepts,
       ...deductionResult.concepts,
       ...healthResult.concepts,
