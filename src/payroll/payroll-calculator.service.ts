@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { ConceptType, PayrollNovelty } from '@prisma/client';
+import { AbsenceCalculator } from './calculator/concepts/absence.calculator';
 import { BaseSalaryCalculator } from './calculator/concepts/base-salary.calculator';
 import { BonusCalculator } from './calculator/concepts/bonus.calculator';
 
@@ -15,6 +16,7 @@ export class PayrollCalculatorService {
   constructor(
     private readonly baseSalaryCalculator: BaseSalaryCalculator,
     private readonly bonusCalculator: BonusCalculator,
+    private readonly absenceCalculator: AbsenceCalculator,
   ) {}
 
   calculate(input: {
@@ -31,12 +33,18 @@ export class PayrollCalculatorService {
 
     const bonusResult = this.bonusCalculator.calculate(input.novelties);
 
+    const absenceResult = this.absenceCalculator.calculate(
+      dailySalary,
+      input.novelties,
+    );
+
     let earnedTotal = baseSalaryResult.earned + bonusResult.earned;
-    let deductionsTotal = 0;
+    let deductionsTotal = absenceResult.deductions;
 
     const concepts: PayrollConcept[] = [
       ...baseSalaryResult.concepts,
       ...bonusResult.concepts,
+      ...absenceResult.concepts,
     ];
 
     for (const novelty of input.novelties) {
@@ -47,19 +55,6 @@ export class PayrollCalculatorService {
         concepts.push({
           code: 'DEDUCTION',
           name: novelty.description || 'Deducción',
-          type: ConceptType.DEDUCTION,
-          amount,
-        });
-      }
-
-      if (novelty.type === 'ABSENCE') {
-        const days = Number(novelty.quantity ?? 0);
-        const amount = dailySalary * days;
-        deductionsTotal += amount;
-
-        concepts.push({
-          code: 'ABSENCE',
-          name: novelty.description || 'Ausencia',
           type: ConceptType.DEDUCTION,
           amount,
         });
