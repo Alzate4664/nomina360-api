@@ -13,6 +13,7 @@ import { FindPayrollPeriodUseCase } from './use-cases/find-payroll-period.use-ca
 import { ReopenPayrollPeriodUseCase } from './use-cases/reopen-payroll-period.use-case';
 import { BonusCalculator } from './calculator/concepts/bonus.calculator';
 import { AbsenceCalculator } from './calculator/concepts/absence.calculator';
+import { DeductionCalculator } from './calculator/concepts/deduction.calculator';
 
 @Module({
   imports: [
@@ -30,6 +31,7 @@ import { AbsenceCalculator } from './calculator/concepts/absence.calculator';
     BaseSalaryCalculator,
     BonusCalculator,
     AbsenceCalculator,
+    DeductionCalculator,
     CreatePayrollPeriodUseCase,
     FindPayrollPeriodsUseCase,
     FindPayrollPeriodUseCase,

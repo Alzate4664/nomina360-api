@@ -3,6 +3,7 @@ import { ConceptType, PayrollNovelty } from '@prisma/client';
 import { AbsenceCalculator } from './calculator/concepts/absence.calculator';
 import { BaseSalaryCalculator } from './calculator/concepts/base-salary.calculator';
 import { BonusCalculator } from './calculator/concepts/bonus.calculator';
+import { DeductionCalculator } from './calculator/concepts/deduction.calculator';
 
 interface PayrollConcept {
   code: string;
@@ -17,6 +18,7 @@ export class PayrollCalculatorService {
     private readonly baseSalaryCalculator: BaseSalaryCalculator,
     private readonly bonusCalculator: BonusCalculator,
     private readonly absenceCalculator: AbsenceCalculator,
+    private readonly deductionCalculator: DeductionCalculator,
   ) {}
 
   calculate(input: {
@@ -38,28 +40,17 @@ export class PayrollCalculatorService {
       input.novelties,
     );
 
+    const deductionResult = this.deductionCalculator.calculate(input.novelties);
+
     let earnedTotal = baseSalaryResult.earned + bonusResult.earned;
-    let deductionsTotal = absenceResult.deductions;
+    let deductionsTotal = absenceResult.deductions + deductionResult.deductions;
 
     const concepts: PayrollConcept[] = [
       ...baseSalaryResult.concepts,
       ...bonusResult.concepts,
       ...absenceResult.concepts,
+      ...deductionResult.concepts,
     ];
-
-    for (const novelty of input.novelties) {
-      if (novelty.type === 'DEDUCTION') {
-        const amount = Number(novelty.amount ?? 0);
-        deductionsTotal += amount;
-
-        concepts.push({
-          code: 'DEDUCTION',
-          name: novelty.description || 'Deducción',
-          type: ConceptType.DEDUCTION,
-          amount,
-        });
-      }
-    }
 
     const health = earnedTotal * 0.04;
     const pension = earnedTotal * 0.04;
