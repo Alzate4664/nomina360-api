@@ -19,23 +19,34 @@ export class OvertimeCalculator {
     const concepts: PayrollConcept[] = [];
 
     for (const novelty of novelties) {
-      if (novelty.type !== 'OVERTIME') {
-        continue;
-      }
+      if (
+        novelty.type !== 'OVERTIME' &&
+        novelty.type !== 'OVERTIME_NIGHT'
+    ) {
+      continue;
+    }
 
-      const hours = Number(novelty.quantity ?? 0);
+    const hours = Number(novelty.quantity ?? 0);
 
-      const amount =
-        hourlyRate * hours * PAYROLL_RATES.overtime.daytimeMultiplier;
+    const multiplier =
+      novelty.type === 'OVERTIME_NIGHT'
+        ? PAYROLL_RATES.overtime.nighttimeMultiplier
+        : PAYROLL_RATES.overtime.daytimeMultiplier;
 
-      earned += amount;
+    const amount = hourlyRate * hours * multiplier;
 
-      concepts.push({
-        code: 'OVERTIME',
-        name: novelty.description || 'Hora extra diurna',
-        type: ConceptType.EARNING,
-        amount,
-      });
+    earned += amount;
+
+    concepts.push({
+      code: novelty.type,
+      name:
+        novelty.description ||
+        (novelty.type === 'OVERTIME_NIGHT'
+          ? 'Hora extra nocturna'
+          : 'Hora extra diurna'),
+      type: ConceptType.EARNING,
+      amount,
+    });
     }
 
     return {

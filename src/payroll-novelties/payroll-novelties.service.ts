@@ -93,6 +93,7 @@ export class PayrollNoveltiesService {
 
     const allowedTypes = [
       'OVERTIME',
+      'OVERTIME_NIGHT',
       'NIGHT_SURCHARGE',
       'SUNDAY_SURCHARGE',
       'HOLIDAY_SURCHARGE',

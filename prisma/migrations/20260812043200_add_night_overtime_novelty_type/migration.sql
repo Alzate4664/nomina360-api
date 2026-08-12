@@ -1,0 +1,2 @@
+-- AlterEnum
+ALTER TYPE "NoveltyType" ADD VALUE 'OVERTIME_NIGHT';
