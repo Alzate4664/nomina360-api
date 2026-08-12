@@ -9,6 +9,7 @@ import { PensionCalculator } from './calculator/concepts/pension.calculator';
 import { OvertimeCalculator } from './calculator/concepts/overtime.calculator';
 import { NightSurchargeCalculator } from './calculator/concepts/night-surcharge.calculator';
 import { SundayHolidayCalculator } from './calculator/concepts/sunday-holiday.calculator';
+import { TransportAllowanceCalculator } from './calculator/concepts/transport-allowance.calculator';
 
 interface PayrollConcept {
   code: string;
@@ -29,6 +30,7 @@ export class PayrollCalculatorService {
     private readonly overtimeCalculator: OvertimeCalculator,
     private readonly nightSurchargeCalculator: NightSurchargeCalculator,
     private readonly sundayHolidayCalculator: SundayHolidayCalculator,
+    private readonly transportAllowanceCalculator: TransportAllowanceCalculator,
   ) {}
 
   calculate(input: {
@@ -60,6 +62,12 @@ export class PayrollCalculatorService {
       input.novelties,
     );
 
+    const transportAllowanceResult =
+      this.transportAllowanceCalculator.calculate(
+        input.baseSalary,
+        input.workedDays,
+      );
+
     const absenceResult = this.absenceCalculator.calculate(
       dailySalary,
       input.novelties,
@@ -67,22 +75,24 @@ export class PayrollCalculatorService {
 
     const deductionResult = this.deductionCalculator.calculate(input.novelties);
 
-    let earnedTotal =
+    const contributionBase =
       baseSalaryResult.earned +
       bonusResult.earned +
       overtimeResult.earned +
       nightSurchargeResult.earned +
       sundayHolidayResult.earned;
 
-    const healthResult = this.healthCalculator.calculate(earnedTotal);
+    const healthResult = this.healthCalculator.calculate(contributionBase);
 
-    const pensionResult = this.pensionCalculator.calculate(earnedTotal);
+    const pensionResult = this.pensionCalculator.calculate(contributionBase);
+
+    const earnedTotal = contributionBase + transportAllowanceResult.earned;
 
     let deductionsTotal =
       absenceResult.deductions +
       deductionResult.deductions +
-      healthResult.deductions;
-    +pensionResult.deductions;
+      healthResult.deductions +
+      pensionResult.deductions;
 
     const concepts: PayrollConcept[] = [
       ...baseSalaryResult.concepts,
@@ -90,6 +100,7 @@ export class PayrollCalculatorService {
       ...overtimeResult.concepts,
       ...nightSurchargeResult.concepts,
       ...sundayHolidayResult.concepts,
+      ...transportAllowanceResult.concepts,
       ...absenceResult.concepts,
       ...deductionResult.concepts,
       ...healthResult.concepts,

@@ -19,6 +19,7 @@ import { PensionCalculator } from './calculator/concepts/pension.calculator';
 import { OvertimeCalculator } from './calculator/concepts/overtime.calculator';
 import { NightSurchargeCalculator } from './calculator/concepts/night-surcharge.calculator';
 import { SundayHolidayCalculator } from './calculator/concepts/sunday-holiday.calculator';
+import { TransportAllowanceCalculator } from './calculator/concepts/transport-allowance.calculator';
 
 @Module({
   imports: [
@@ -42,6 +43,7 @@ import { SundayHolidayCalculator } from './calculator/concepts/sunday-holiday.ca
     OvertimeCalculator,
     NightSurchargeCalculator,
     SundayHolidayCalculator,
+    TransportAllowanceCalculator,
     CreatePayrollPeriodUseCase,
     FindPayrollPeriodsUseCase,
     FindPayrollPeriodUseCase,

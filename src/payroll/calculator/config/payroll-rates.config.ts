@@ -1,4 +1,7 @@
 export const PAYROLL_RATES = {
+
+  minimumWage: 1750905,
+
   standardMonthlyHours: 210,
 
   overtime: {
@@ -19,5 +22,10 @@ export const PAYROLL_RATES = {
   contributions: {
     employeeHealthRate: 0.04,
     employeePensionRate: 0.04,
+  },
+
+  transportAllowance: {
+  monthlyAmount: 249095,
+  salaryLimitInMinimumWages: 2,
   },
 } as const;
