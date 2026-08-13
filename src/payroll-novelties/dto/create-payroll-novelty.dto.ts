@@ -1,4 +1,4 @@
-import { NoveltyType } from '@prisma/client';
+import { NoveltyType, PayrollDayType } from '@prisma/client';
 import {
   IsEnum,
   IsNotEmpty,
@@ -17,6 +17,10 @@ export class CreatePayrollNoveltyDto {
 
   @IsEnum(NoveltyType)
   type!: NoveltyType;
+
+  @IsOptional()
+  @IsEnum(PayrollDayType)
+  dayType?: PayrollDayType;
 
   @IsOptional()
   @IsNumber()

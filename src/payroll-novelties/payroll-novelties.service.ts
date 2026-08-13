@@ -62,6 +62,7 @@ export class PayrollNoveltiesService {
         employeeId: dto.employeeId,
         payrollPeriodId: payrollPeriod.id,
         type: dto.type,
+        dayType: dto.dayType,
         quantity: dto.quantity,
         amount: dto.amount,
         description: dto.description,

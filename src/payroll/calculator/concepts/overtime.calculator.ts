@@ -19,34 +19,38 @@ export class OvertimeCalculator {
     const concepts: PayrollConcept[] = [];
 
     for (const novelty of novelties) {
-      if (
-        novelty.type !== 'OVERTIME' &&
-        novelty.type !== 'OVERTIME_NIGHT'
-    ) {
-      continue;
-    }
+      if (novelty.type !== 'OVERTIME' && novelty.type !== 'OVERTIME_NIGHT') {
+        continue;
+      }
 
-    const hours = Number(novelty.quantity ?? 0);
+      const hours = Number(novelty.quantity ?? 0);
 
-    const multiplier =
-      novelty.type === 'OVERTIME_NIGHT'
-        ? PAYROLL_RATES.overtime.nighttimeMultiplier
-        : PAYROLL_RATES.overtime.daytimeMultiplier;
+      const overtimeMultiplier =
+        novelty.type === 'OVERTIME_NIGHT'
+          ? PAYROLL_RATES.overtime.nighttimeMultiplier
+          : PAYROLL_RATES.overtime.daytimeMultiplier;
 
-    const amount = hourlyRate * hours * multiplier;
+      const daySurchargeRate =
+        novelty.dayType === 'SUNDAY' || novelty.dayType === 'HOLIDAY'
+          ? PAYROLL_RATES.surcharges.sundayHolidayRate
+          : 0;
 
-    earned += amount;
+      const multiplier = overtimeMultiplier + daySurchargeRate;
 
-    concepts.push({
-      code: novelty.type,
-      name:
-        novelty.description ||
-        (novelty.type === 'OVERTIME_NIGHT'
-          ? 'Hora extra nocturna'
-          : 'Hora extra diurna'),
-      type: ConceptType.EARNING,
-      amount,
-    });
+      const amount = hourlyRate * hours * multiplier;
+
+      earned += amount;
+
+      concepts.push({
+        code: novelty.type,
+        name:
+          novelty.description ||
+          (novelty.type === 'OVERTIME_NIGHT'
+            ? 'Hora extra nocturna'
+            : 'Hora extra diurna'),
+        type: ConceptType.EARNING,
+        amount,
+      });
     }
 
     return {
