@@ -1,11 +1,13 @@
-import { NoveltyType, PayrollDayType } from '@prisma/client';
+import { NoveltyType, PayrollDayType, SickLeaveOrigin } from '@prisma/client';
 import {
+  IsInt,
   IsEnum,
   IsNotEmpty,
   IsNumber,
   IsOptional,
   IsString,
   IsUUID,
+  Min,
 } from 'class-validator';
 
 export class CreatePayrollNoveltyDto {
@@ -21,6 +23,20 @@ export class CreatePayrollNoveltyDto {
   @IsOptional()
   @IsEnum(PayrollDayType)
   dayType?: PayrollDayType;
+
+  @IsOptional()
+  @IsEnum(SickLeaveOrigin)
+  sickLeaveOrigin?: SickLeaveOrigin;
+
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  sickLeaveStartDay?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(1)
+  sickLeaveIbc?: number;
 
   @IsOptional()
   @IsNumber()

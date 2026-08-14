@@ -3,10 +3,10 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { NoveltyType, PayrollStatus, Prisma } from '@prisma/client';
 import { AuditService } from '../audit/audit.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreatePayrollNoveltyDto } from './dto/create-payroll-novelty.dto';
-import { NoveltyType, PayrollStatus, Prisma } from '@prisma/client';
 
 @Injectable()
 export class PayrollNoveltiesService {
@@ -43,6 +43,34 @@ export class PayrollNoveltiesService {
       throw new NotFoundException('Período de nómina no encontrado');
     }
 
+    if (dto.type === NoveltyType.SICK_LEAVE) {
+      if (!dto.sickLeaveOrigin) {
+        throw new BadRequestException(
+          'El origen de la incapacidad es obligatorio para novedades de incapacidad',
+        );
+      }
+
+      if (!dto.sickLeaveStartDay) {
+        throw new BadRequestException(
+          'El día inicial de la incapacidad es obligatorio para novedades de incapacidad',
+        );
+      }
+
+      if (!dto.sickLeaveIbc) {
+        throw new BadRequestException(
+          'El IBC de la incapacidad es obligatorio para novedades de incapacidad',
+        );
+      }
+    }
+
+    if (dto.type !== NoveltyType.SICK_LEAVE) {
+      if (dto.sickLeaveOrigin || dto.sickLeaveStartDay || dto.sickLeaveIbc) {
+        throw new BadRequestException(
+          'Los datos de incapacidad solo aplican a novedades de incapacidad',
+        );
+      }
+    }
+
     const allowedStatuses: PayrollStatus[] = [
       PayrollStatus.DRAFT,
       PayrollStatus.COLLECTING_NOVELTIES,
@@ -63,6 +91,9 @@ export class PayrollNoveltiesService {
         payrollPeriodId: payrollPeriod.id,
         type: dto.type,
         dayType: dto.dayType,
+        sickLeaveOrigin: dto.sickLeaveOrigin,
+        sickLeaveStartDay: dto.sickLeaveStartDay,
+        sickLeaveIbc: dto.sickLeaveIbc,
         quantity: dto.quantity,
         amount: dto.amount,
         description: dto.description,

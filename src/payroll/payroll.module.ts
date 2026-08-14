@@ -20,6 +20,7 @@ import { OvertimeCalculator } from './calculator/concepts/overtime.calculator';
 import { NightSurchargeCalculator } from './calculator/concepts/night-surcharge.calculator';
 import { SundayHolidayCalculator } from './calculator/concepts/sunday-holiday.calculator';
 import { TransportAllowanceCalculator } from './calculator/concepts/transport-allowance.calculator';
+import { SickLeaveCalculator } from './calculator/concepts/sick-leave.calculator';
 
 @Module({
   imports: [
@@ -44,6 +45,7 @@ import { TransportAllowanceCalculator } from './calculator/concepts/transport-al
     NightSurchargeCalculator,
     SundayHolidayCalculator,
     TransportAllowanceCalculator,
+    SickLeaveCalculator,
     CreatePayrollPeriodUseCase,
     FindPayrollPeriodsUseCase,
     FindPayrollPeriodUseCase,

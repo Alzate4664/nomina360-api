@@ -10,6 +10,7 @@ import { OvertimeCalculator } from './calculator/concepts/overtime.calculator';
 import { NightSurchargeCalculator } from './calculator/concepts/night-surcharge.calculator';
 import { SundayHolidayCalculator } from './calculator/concepts/sunday-holiday.calculator';
 import { TransportAllowanceCalculator } from './calculator/concepts/transport-allowance.calculator';
+import { SickLeaveCalculator } from './calculator/concepts/sick-leave.calculator';
 
 interface PayrollConcept {
   code: string;
@@ -31,6 +32,7 @@ export class PayrollCalculatorService {
     private readonly nightSurchargeCalculator: NightSurchargeCalculator,
     private readonly sundayHolidayCalculator: SundayHolidayCalculator,
     private readonly transportAllowanceCalculator: TransportAllowanceCalculator,
+    private readonly sickLeaveCalculator: SickLeaveCalculator,
   ) {}
 
   calculate(input: {
@@ -40,9 +42,16 @@ export class PayrollCalculatorService {
   }) {
     const dailySalary = input.baseSalary / 30;
 
+    const sickLeaveResult = this.sickLeaveCalculator.calculate(input.novelties);
+
+    const ordinaryWorkedDays = Math.max(
+      input.workedDays - sickLeaveResult.days,
+      0,
+    );
+
     const baseSalaryResult = this.baseSalaryCalculator.calculate(
       input.baseSalary,
-      input.workedDays,
+      ordinaryWorkedDays,
     );
 
     const bonusResult = this.bonusCalculator.calculate(input.novelties);
@@ -65,7 +74,7 @@ export class PayrollCalculatorService {
     const transportAllowanceResult =
       this.transportAllowanceCalculator.calculate(
         input.baseSalary,
-        input.workedDays,
+        ordinaryWorkedDays,
       );
 
     const absenceResult = this.absenceCalculator.calculate(
@@ -77,6 +86,7 @@ export class PayrollCalculatorService {
 
     const contributionBase =
       baseSalaryResult.earned +
+      sickLeaveResult.earned +
       bonusResult.earned +
       overtimeResult.earned +
       nightSurchargeResult.earned +
@@ -96,6 +106,7 @@ export class PayrollCalculatorService {
 
     const concepts: PayrollConcept[] = [
       ...baseSalaryResult.concepts,
+      ...sickLeaveResult.concepts,
       ...bonusResult.concepts,
       ...overtimeResult.concepts,
       ...nightSurchargeResult.concepts,

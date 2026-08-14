@@ -131,19 +131,21 @@ model PayrollConceptDetail {
 }
 
 model PayrollNovelty {
-  id              String         @id @default(uuid())
-  companyId       String
-  employeeId      String
-  payrollPeriodId String
-  type            NoveltyType
-  dayType         PayrollDayType @default(REGULAR)
-  quantity        Decimal?
-  amount          Decimal?
-  description     String?
-  createdAt       DateTime       @default(now())
-
-  employee      Employee      @relation(fields: [employeeId], references: [id])
-  payrollPeriod PayrollPeriod @relation(fields: [payrollPeriodId], references: [id])
+  id                String           @id @default(uuid())
+  companyId         String
+  employeeId        String
+  payrollPeriodId   String
+  type              NoveltyType
+  dayType           PayrollDayType   @default(REGULAR)
+  sickLeaveOrigin   SickLeaveOrigin?
+  sickLeaveStartDay Int?
+  sickLeaveIbc      Decimal?
+  quantity          Decimal?
+  amount            Decimal?
+  description       String?
+  createdAt         DateTime         @default(now())
+  employee          Employee         @relation(fields: [employeeId], references: [id])
+  payrollPeriod     PayrollPeriod    @relation(fields: [payrollPeriodId], references: [id])
 
   @@index([payrollPeriodId])
 }
@@ -213,6 +215,12 @@ enum PayrollDayType {
   REGULAR
   SUNDAY
   HOLIDAY
+}
+
+enum SickLeaveOrigin {
+  COMMON_DISEASE
+  WORK_ACCIDENT
+  OCCUPATIONAL_DISEASE
 }
 
 model AuditLog {
