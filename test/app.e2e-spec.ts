@@ -11,6 +11,7 @@ describe('Nomina360 API (e2e)', () => {
 
   let createdUserId: string | undefined;
   let createdEmployeeId: string | undefined;
+  let createdPayrollPeriodId: string | undefined;
   let createdNoveltyId: string | undefined;
 
   const uniqueSuffix = `${Date.now()}-${Math.floor(Math.random() * 10000)}`;
@@ -19,11 +20,13 @@ describe('Nomina360 API (e2e)', () => {
   const testEmployeeEmail = `empleado-e2e-${uniqueSuffix}@nomina360.test`;
   const testDocumentNumber = `E2E${Date.now()}`;
 
+  const testPayrollYear = 2099;
+  const testPayrollMonth = 12;
+
   beforeAll(async () => {
-    const moduleFixture: TestingModule =
-      await Test.createTestingModule({
-        imports: [AppModule],
-      }).compile();
+    const moduleFixture: TestingModule = await Test.createTestingModule({
+      imports: [AppModule],
+    }).compile();
 
     app = moduleFixture.createNestApplication();
     await app.init();
@@ -51,6 +54,14 @@ describe('Nomina360 API (e2e)', () => {
         });
       }
 
+      if (createdPayrollPeriodId) {
+        await prisma.payrollPeriod.deleteMany({
+          where: {
+            id: createdPayrollPeriodId,
+          },
+        });
+      }
+
       if (createdEmployeeId) {
         await prisma.employee.deleteMany({
           where: {
@@ -70,6 +81,7 @@ describe('Nomina360 API (e2e)', () => {
       const entityIds = [
         createdUserId,
         createdEmployeeId,
+        createdPayrollPeriodId,
         createdNoveltyId,
       ].filter((id): id is string => Boolean(id));
 
@@ -88,15 +100,11 @@ describe('Nomina360 API (e2e)', () => {
   });
 
   it('GET / debe responder 200', async () => {
-    await request(app.getHttpServer())
-      .get('/')
-      .expect(200);
+    await request(app.getHttpServer()).get('/').expect(200);
   });
 
   it('GET /users sin token debe responder 401', async () => {
-    await request(app.getHttpServer())
-      .get('/users')
-      .expect(401);
+    await request(app.getHttpServer()).get('/users').expect(401);
   });
 
   it('POST /auth/login debe devolver un accessToken', async () => {
@@ -154,9 +162,7 @@ describe('Nomina360 API (e2e)', () => {
       .set('Authorization', `Bearer ${ownerToken}`)
       .expect(400);
 
-    expect(response.body.message).toContain(
-      'limit no puede ser mayor que 100',
-    );
+    expect(response.body.message).toContain('limit no puede ser mayor que 100');
   });
 
   it('GET /employees debe responder 200', async () => {
@@ -223,9 +229,7 @@ describe('Nomina360 API (e2e)', () => {
       .set('Authorization', `Bearer ${ownerToken}`)
       .expect(400);
 
-    expect(response.body.message).toContain(
-      'Estado de nómina no válido',
-    );
+    expect(response.body.message).toContain('Estado de nómina no válido');
   });
 
   it('GET /audit debe responder 200', async () => {
@@ -246,9 +250,7 @@ describe('Nomina360 API (e2e)', () => {
       .set('Authorization', `Bearer ${ownerToken}`)
       .expect(400);
 
-    expect(response.body.message).toContain(
-      'limit no puede ser mayor que 100',
-    );
+    expect(response.body.message).toContain('limit no puede ser mayor que 100');
   });
 
   it('POST /users debe crear un usuario', async () => {
@@ -295,8 +297,7 @@ describe('Nomina360 API (e2e)', () => {
       .expect(200);
 
     const auditRecord = response.body.data.find(
-      (record: { entityId?: string }) =>
-        record.entityId === createdUserId,
+      (record: { entityId?: string }) => record.entityId === createdUserId,
     );
 
     expect(auditRecord).toBeDefined();
@@ -316,12 +317,12 @@ describe('Nomina360 API (e2e)', () => {
         email: testEmployeeEmail,
         phone: '3001234567',
         position: 'Auxiliar de pruebas',
-        department: 'TecnologÃ­a',
+        department: 'Tecnología',
         contractType: 'Indefinido',
         baseSalary: 1800000,
         startDate: '2026-01-15',
         eps: 'Sura',
-        pensionFund: 'ProtecciÃ³n',
+        pensionFund: 'Protección',
         arl: 'Positiva',
         compensationBox: 'Comfama',
       })
@@ -356,12 +357,31 @@ describe('Nomina360 API (e2e)', () => {
       .expect(200);
 
     const auditRecord = response.body.data.find(
-      (record: { entityId?: string }) =>
-        record.entityId === createdEmployeeId,
+      (record: { entityId?: string }) => record.entityId === createdEmployeeId,
     );
 
     expect(auditRecord).toBeDefined();
     expect(auditRecord.action).toBe('CREATE_EMPLOYEE');
+  });
+
+  it('POST /payroll/periods debe crear un período de nómina', async () => {
+    const response = await request(app.getHttpServer())
+      .post('/payroll/periods')
+      .set('Authorization', `Bearer ${ownerToken}`)
+      .send({
+        name: `Período automático E2E ${uniqueSuffix}`,
+        payrollType: 'EXTRAORDINARY',
+        year: testPayrollYear,
+        month: testPayrollMonth,
+      })
+      .expect(201);
+
+    expect(response.body).toHaveProperty('id');
+    expect(response.body.year).toBe(testPayrollYear);
+    expect(response.body.month).toBe(testPayrollMonth);
+    expect(response.body.payrollType).toBe('EXTRAORDINARY');
+
+    createdPayrollPeriodId = response.body.id;
   });
 
   it('POST /payroll-novelties debe crear una novedad', async () => {
@@ -370,25 +390,27 @@ describe('Nomina360 API (e2e)', () => {
       .set('Authorization', `Bearer ${ownerToken}`)
       .send({
         employeeId: createdEmployeeId,
+        payrollPeriodId: createdPayrollPeriodId,
         type: 'BONUS',
         amount: 150000,
-        description: 'BonificaciÃ³n automÃ¡tica E2E',
-        periodYear: 2026,
-        periodMonth: 8,
+        description: 'Bonificación automática E2E',
       })
       .expect(201);
 
     expect(response.body).toHaveProperty('id');
     expect(response.body.employeeId).toBe(createdEmployeeId);
+    expect(response.body.payrollPeriodId).toBe(createdPayrollPeriodId);
     expect(response.body.type).toBe('BONUS');
 
     createdNoveltyId = response.body.id;
   });
 
   it('GET /payroll-novelties debe encontrar la novedad creada', async () => {
+    const search = encodeURIComponent('Bonificación');
+
     const response = await request(app.getHttpServer())
       .get(
-        '/payroll-novelties?year=2026&month=8&search=BonificaciÃ³n&page=1&limit=20',
+        `/payroll-novelties?year=${testPayrollYear}&month=${testPayrollMonth}&search=${search}&page=1&limit=20`,
       )
       .set('Authorization', `Bearer ${ownerToken}`)
       .expect(200);
@@ -398,7 +420,7 @@ describe('Nomina360 API (e2e)', () => {
     );
 
     expect(novelty).toBeDefined();
-    expect(novelty.description).toBe('BonificaciÃ³n automÃ¡tica E2E');
+    expect(novelty.description).toBe('Bonificación automática E2E');
   });
 
   it('GET /audit debe registrar CREATE_PAYROLL_NOVELTY', async () => {
@@ -410,8 +432,7 @@ describe('Nomina360 API (e2e)', () => {
       .expect(200);
 
     const auditRecord = response.body.data.find(
-      (record: { entityId?: string }) =>
-        record.entityId === createdNoveltyId,
+      (record: { entityId?: string }) => record.entityId === createdNoveltyId,
     );
 
     expect(auditRecord).toBeDefined();
@@ -430,20 +451,18 @@ describe('Nomina360 API (e2e)', () => {
 
   it('GET /audit debe registrar DEACTIVATE_EMPLOYEE', async () => {
     const response = await request(app.getHttpServer())
-      .get(
-        '/audit?action=DEACTIVATE_EMPLOYEE&entity=Employee&page=1&limit=100',
-      )
+      .get('/audit?action=DEACTIVATE_EMPLOYEE&entity=Employee&page=1&limit=100')
       .set('Authorization', `Bearer ${ownerToken}`)
       .expect(200);
 
     const auditRecord = response.body.data.find(
-      (record: { entityId?: string }) =>
-        record.entityId === createdEmployeeId,
+      (record: { entityId?: string }) => record.entityId === createdEmployeeId,
     );
 
     expect(auditRecord).toBeDefined();
     expect(auditRecord.action).toBe('DEACTIVATE_EMPLOYEE');
   });
+
   it('GET /health debe responder 200 y confirmar conexión', async () => {
     const response = await request(app.getHttpServer())
       .get('/health')
