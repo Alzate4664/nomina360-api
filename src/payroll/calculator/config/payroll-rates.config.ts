@@ -32,4 +32,8 @@ export const PAYROLL_RATES = {
     daysPerYear: 360,
     interestAnnualRate: 0.12,
   },
+
+  serviceBonus: {
+    daysPerYear: 360,
+  },
 } as const;

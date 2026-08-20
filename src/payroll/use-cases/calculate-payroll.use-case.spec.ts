@@ -6,6 +6,7 @@ import { AccruedDaysCalculator } from '../calculator/accrued-days.calculator';
 import { SeverancePayrollCalculator } from '../calculator/severance-payroll.calculator';
 import { PayrollCalculatorService } from '../payroll-calculator.service';
 import { CalculatePayrollUseCase } from './calculate-payroll.use-case';
+import { ServiceBonusPayrollCalculator } from '../calculator/service-bonus-payroll.calculator';
 
 describe('CalculatePayrollUseCase', () => {
   let useCase: CalculatePayrollUseCase;
@@ -49,6 +50,10 @@ describe('CalculatePayrollUseCase', () => {
     log: jest.fn(),
   };
 
+  const serviceBonusPayrollCalculatorMock = {
+    calculate: jest.fn(),
+  };
+
   beforeEach(async () => {
     jest.clearAllMocks();
 
@@ -66,6 +71,10 @@ describe('CalculatePayrollUseCase', () => {
         {
           provide: SeverancePayrollCalculator,
           useValue: severancePayrollCalculatorMock,
+        },
+        {
+          provide: ServiceBonusPayrollCalculator,
+          useValue: serviceBonusPayrollCalculatorMock,
         },
         {
           provide: AccruedDaysCalculator,
@@ -245,6 +254,106 @@ describe('CalculatePayrollUseCase', () => {
 
     expect(severancePayrollCalculatorMock.calculate).not.toHaveBeenCalled();
 
+    expect(prismaMock.payrollItem.create).not.toHaveBeenCalled();
+  });
+
+  it('should use service bonus payroll calculator for first semester bonus', async () => {
+    prismaMock.payrollPeriod.create.mockResolvedValue({
+      id: 'period-1',
+      companyId: 'company-1',
+      year: 2026,
+      month: 6,
+      payrollType: PayrollType.BONUS,
+      status: PayrollStatus.DRAFT,
+    });
+
+    prismaMock.payrollPeriod.update.mockResolvedValue({
+      id: 'period-1',
+      companyId: 'company-1',
+      year: 2026,
+      month: 6,
+      payrollType: PayrollType.BONUS,
+      status: PayrollStatus.CALCULATED,
+    });
+
+    accruedDaysCalculatorMock.calculate.mockReturnValue(180);
+
+    serviceBonusPayrollCalculatorMock.calculate.mockReturnValue({
+      earnedTotal: 1500000,
+      deductionsTotal: 0,
+      netPay: 1500000,
+      concepts: [
+        {
+          code: 'SERVICE_BONUS',
+          name: 'Prima de servicios',
+          type: 'EARNING',
+          amount: 1500000,
+        },
+      ],
+    });
+
+    await useCase.execute('company-1', 'user-1', 2026, 6, PayrollType.BONUS);
+
+    expect(accruedDaysCalculatorMock.calculate).toHaveBeenCalledWith(
+      new Date('2025-01-01T00:00:00.000Z'),
+      2026,
+      6,
+      1,
+    );
+
+    expect(serviceBonusPayrollCalculatorMock.calculate).toHaveBeenCalledWith({
+      baseSalary: 3000000,
+      accruedDays: 180,
+    });
+
+    expect(payrollCalculatorMock.calculate).not.toHaveBeenCalled();
+    expect(severancePayrollCalculatorMock.calculate).not.toHaveBeenCalled();
+  });
+
+  it('should use service bonus payroll calculator for second semester bonus', async () => {
+    prismaMock.payrollPeriod.create.mockResolvedValue({
+      id: 'period-1',
+      companyId: 'company-1',
+      year: 2026,
+      month: 12,
+      payrollType: PayrollType.BONUS,
+      status: PayrollStatus.DRAFT,
+    });
+
+    prismaMock.payrollPeriod.update.mockResolvedValue({
+      id: 'period-1',
+      companyId: 'company-1',
+      year: 2026,
+      month: 12,
+      payrollType: PayrollType.BONUS,
+      status: PayrollStatus.CALCULATED,
+    });
+
+    accruedDaysCalculatorMock.calculate.mockReturnValue(180);
+
+    serviceBonusPayrollCalculatorMock.calculate.mockReturnValue({
+      earnedTotal: 1500000,
+      deductionsTotal: 0,
+      netPay: 1500000,
+      concepts: [],
+    });
+
+    await useCase.execute('company-1', 'user-1', 2026, 12, PayrollType.BONUS);
+
+    expect(accruedDaysCalculatorMock.calculate).toHaveBeenCalledWith(
+      new Date('2025-01-01T00:00:00.000Z'),
+      2026,
+      12,
+      7,
+    );
+  });
+
+  it('should skip employee when service bonus accrued days are zero', async () => {
+    accruedDaysCalculatorMock.calculate.mockReturnValue(0);
+
+    await useCase.execute('company-1', 'user-1', 2026, 6, PayrollType.BONUS);
+
+    expect(serviceBonusPayrollCalculatorMock.calculate).not.toHaveBeenCalled();
     expect(prismaMock.payrollItem.create).not.toHaveBeenCalled();
   });
 });

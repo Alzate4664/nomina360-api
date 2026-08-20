@@ -26,6 +26,8 @@ import { LeaveCalculator } from './calculator/concepts/leave.calculator';
 import { AccruedDaysCalculator } from './calculator/accrued-days.calculator';
 import { SeverancePayrollCalculator } from './calculator/severance-payroll.calculator';
 import { SeveranceCalculator } from './calculator/concepts/severance.calculator';
+import { ServiceBonusCalculator } from './calculator/concepts/service-bonus.calculator';
+import { ServiceBonusPayrollCalculator } from './calculator/service-bonus-payroll.calculator';
 
 @Module({
   imports: [
@@ -56,6 +58,8 @@ import { SeveranceCalculator } from './calculator/concepts/severance.calculator'
     AccruedDaysCalculator,
     SeveranceCalculator,
     SeverancePayrollCalculator,
+    ServiceBonusCalculator,
+    ServiceBonusPayrollCalculator,
     CreatePayrollPeriodUseCase,
     FindPayrollPeriodsUseCase,
     FindPayrollPeriodUseCase,

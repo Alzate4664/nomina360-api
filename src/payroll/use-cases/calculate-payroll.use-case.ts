@@ -5,6 +5,7 @@ import { PayrollCalculatorService } from '../payroll-calculator.service';
 import { PayrollStatus, PayrollType } from '@prisma/client';
 import { AccruedDaysCalculator } from '../calculator/accrued-days.calculator';
 import { SeverancePayrollCalculator } from '../calculator/severance-payroll.calculator';
+import { ServiceBonusPayrollCalculator } from '../calculator/service-bonus-payroll.calculator';
 
 @Injectable()
 export class CalculatePayrollUseCase {
@@ -12,6 +13,7 @@ export class CalculatePayrollUseCase {
     private readonly prisma: PrismaService,
     private readonly calculator: PayrollCalculatorService,
     private readonly severancePayrollCalculator: SeverancePayrollCalculator,
+    private readonly serviceBonusPayrollCalculator: ServiceBonusPayrollCalculator,
     private readonly accruedDaysCalculator: AccruedDaysCalculator,
     private readonly auditService: AuditService,
   ) {}
@@ -126,6 +128,24 @@ export class CalculatePayrollUseCase {
         }
 
         calculation = this.severancePayrollCalculator.calculate({
+          baseSalary: Number(employee.baseSalary),
+          accruedDays,
+        });
+      } else if (payrollType === PayrollType.BONUS) {
+        const semesterStartMonth = month <= 6 ? 1 : 7;
+
+        const accruedDays = this.accruedDaysCalculator.calculate(
+          employee.startDate,
+          year,
+          month,
+          semesterStartMonth,
+        );
+
+        if (accruedDays <= 0) {
+          continue;
+        }
+
+        calculation = this.serviceBonusPayrollCalculator.calculate({
           baseSalary: Number(employee.baseSalary),
           accruedDays,
         });
