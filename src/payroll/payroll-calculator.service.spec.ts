@@ -1,4 +1,4 @@
-import { PayrollDayType, SickLeaveOrigin } from '@prisma/client';
+import { LeaveType, PayrollDayType, SickLeaveOrigin } from '@prisma/client';
 import { PAYROLL_RATES } from './calculator/config/payroll-rates.config';
 import { AbsenceCalculator } from './calculator/concepts/absence.calculator';
 import { BaseSalaryCalculator } from './calculator/concepts/base-salary.calculator';
@@ -13,6 +13,7 @@ import { SundayHolidayCalculator } from './calculator/concepts/sunday-holiday.ca
 import { TransportAllowanceCalculator } from './calculator/concepts/transport-allowance.calculator';
 import { PayrollCalculatorService } from './payroll-calculator.service';
 import { VacationCalculator } from './calculator/concepts/vacation.calculator';
+import { LeaveCalculator } from './calculator/concepts/leave.calculator';
 
 describe('PayrollCalculatorService', () => {
   let calculator: PayrollCalculatorService;
@@ -31,6 +32,7 @@ describe('PayrollCalculatorService', () => {
       new TransportAllowanceCalculator(),
       new SickLeaveCalculator(),
       new VacationCalculator(),
+      new LeaveCalculator(),
     );
   });
 
@@ -179,5 +181,97 @@ describe('PayrollCalculatorService', () => {
     expect(transportConcept?.amount).toBe(
       Math.round((PAYROLL_RATES.transportAllowance.monthlyAmount / 30) * 25),
     );
+  });
+
+  it('should exclude paid leave days from ordinary salary and pay them as leave', () => {
+    const baseSalary = 3000000;
+
+    const result = calculator.calculate({
+      baseSalary,
+      workedDays: 30,
+      novelties: [
+        {
+          id: 'leave-paid-1',
+          companyId: 'company-1',
+          employeeId: 'employee-1',
+          payrollPeriodId: 'period-1',
+          type: 'LEAVE',
+          dayType: PayrollDayType.REGULAR,
+          sickLeaveOrigin: null,
+          sickLeaveStartDay: null,
+          sickLeaveIbc: null,
+          leaveType: LeaveType.PAID,
+          quantity: 3,
+          amount: null,
+          description: 'Licencia remunerada',
+          createdAt: new Date(),
+        },
+      ],
+    });
+
+    const baseSalaryConcept = result.concepts.find(
+      (concept) => concept.code === 'BASE_SALARY',
+    );
+
+    const leaveConcept = result.concepts.find(
+      (concept) => concept.code === 'LEAVE',
+    );
+
+    expect(baseSalaryConcept?.amount).toBe(2700000);
+    expect(leaveConcept?.amount).toBe(300000);
+
+    expect((baseSalaryConcept?.amount ?? 0) + (leaveConcept?.amount ?? 0)).toBe(
+      3000000,
+    );
+  });
+
+  it('should exclude unpaid leave days from ordinary salary without generating leave earnings', () => {
+    const baseSalary = 3000000;
+
+    const result = calculator.calculate({
+      baseSalary,
+      workedDays: 30,
+      novelties: [
+        {
+          id: 'leave-unpaid-1',
+          companyId: 'company-1',
+          employeeId: 'employee-1',
+          payrollPeriodId: 'period-1',
+          type: 'LEAVE',
+          dayType: PayrollDayType.REGULAR,
+          sickLeaveOrigin: null,
+          sickLeaveStartDay: null,
+          sickLeaveIbc: null,
+          leaveType: LeaveType.UNPAID,
+          quantity: 3,
+          amount: null,
+          description: 'Licencia no remunerada',
+          createdAt: new Date(),
+        },
+      ],
+    });
+
+    const baseSalaryConcept = result.concepts.find(
+      (concept) => concept.code === 'BASE_SALARY',
+    );
+
+    const leaveConcept = result.concepts.find(
+      (concept) => concept.code === 'LEAVE',
+    );
+
+    expect(baseSalaryConcept?.amount).toBe(2700000);
+    expect(leaveConcept).toBeUndefined();
+
+    const transportConcept = result.concepts.find(
+      (concept) => concept.code === 'TRANSPORT_ALLOWANCE',
+    );
+
+    const expectedTransportAllowance = Math.round(
+      (PAYROLL_RATES.transportAllowance.monthlyAmount / 30) * 27,
+    );
+
+    expect(transportConcept?.amount).toBe(expectedTransportAllowance);
+
+    expect(result.earnedTotal).toBe(2700000 + expectedTransportAllowance);
   });
 });

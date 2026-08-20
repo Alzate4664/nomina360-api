@@ -1,4 +1,9 @@
-import { NoveltyType, PayrollDayType, SickLeaveOrigin } from '@prisma/client';
+import {
+  LeaveType,
+  NoveltyType,
+  PayrollDayType,
+  SickLeaveOrigin,
+} from '@prisma/client';
 import {
   IsInt,
   IsEnum,
@@ -37,6 +42,10 @@ export class CreatePayrollNoveltyDto {
   @IsNumber()
   @Min(1)
   sickLeaveIbc?: number;
+
+  @IsOptional()
+  @IsEnum(LeaveType)
+  leaveType?: LeaveType;
 
   @IsOptional()
   @IsNumber()

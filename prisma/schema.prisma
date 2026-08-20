@@ -140,6 +140,7 @@ model PayrollNovelty {
   sickLeaveOrigin   SickLeaveOrigin?
   sickLeaveStartDay Int?
   sickLeaveIbc      Decimal?
+  leaveType         LeaveType?
   quantity          Decimal?
   amount            Decimal?
   description       String?
@@ -209,6 +210,7 @@ enum NoveltyType {
   ABSENCE
   VACATION
   SICK_LEAVE
+  LEAVE
 }
 
 enum PayrollDayType {
@@ -221,6 +223,11 @@ enum SickLeaveOrigin {
   COMMON_DISEASE
   WORK_ACCIDENT
   OCCUPATIONAL_DISEASE
+}
+
+enum LeaveType {
+  PAID
+  UNPAID
 }
 
 model AuditLog {

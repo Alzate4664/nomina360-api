@@ -22,6 +22,7 @@ import { SundayHolidayCalculator } from './calculator/concepts/sunday-holiday.ca
 import { TransportAllowanceCalculator } from './calculator/concepts/transport-allowance.calculator';
 import { SickLeaveCalculator } from './calculator/concepts/sick-leave.calculator';
 import { VacationCalculator } from './calculator/concepts/vacation.calculator';
+import { LeaveCalculator } from './calculator/concepts/leave.calculator';
 
 @Module({
   imports: [
@@ -48,6 +49,7 @@ import { VacationCalculator } from './calculator/concepts/vacation.calculator';
     TransportAllowanceCalculator,
     SickLeaveCalculator,
     VacationCalculator,
+    LeaveCalculator,
     CreatePayrollPeriodUseCase,
     FindPayrollPeriodsUseCase,
     FindPayrollPeriodUseCase,

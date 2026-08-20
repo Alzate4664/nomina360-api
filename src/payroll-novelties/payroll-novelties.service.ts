@@ -71,6 +71,20 @@ export class PayrollNoveltiesService {
       }
     }
 
+    if (dto.type === NoveltyType.LEAVE) {
+      if (!dto.leaveType) {
+        throw new BadRequestException(
+          'El tipo de licencia es obligatorio para novedades de licencia',
+        );
+      }
+    }
+
+    if (dto.type !== NoveltyType.LEAVE && dto.leaveType) {
+      throw new BadRequestException(
+        'El tipo de licencia solo aplica a novedades de licencia',
+      );
+    }
+
     const allowedStatuses: PayrollStatus[] = [
       PayrollStatus.DRAFT,
       PayrollStatus.COLLECTING_NOVELTIES,
@@ -94,6 +108,7 @@ export class PayrollNoveltiesService {
         sickLeaveOrigin: dto.sickLeaveOrigin,
         sickLeaveStartDay: dto.sickLeaveStartDay,
         sickLeaveIbc: dto.sickLeaveIbc,
+        leaveType: dto.leaveType,
         quantity: dto.quantity,
         amount: dto.amount,
         description: dto.description,
@@ -110,6 +125,18 @@ export class PayrollNoveltiesService {
     });
 
     return createdNovelty;
+
+    if (dto.type === NoveltyType.LEAVE && !dto.leaveType) {
+      throw new BadRequestException(
+        'El tipo de licencia es obligatorio para novedades de licencia',
+      );
+    }
+
+    if (dto.type !== NoveltyType.LEAVE && dto.leaveType) {
+      throw new BadRequestException(
+        'El tipo de licencia solo aplica a novedades de licencia',
+      );
+    }
   }
 
   async findAll(
@@ -134,6 +161,7 @@ export class PayrollNoveltiesService {
       'ABSENCE',
       'VACATION',
       'SICK_LEAVE',
+      'LEAVE',
     ];
 
     const normalizedSearch = search?.trim();

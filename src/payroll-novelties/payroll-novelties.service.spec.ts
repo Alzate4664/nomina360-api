@@ -1,5 +1,10 @@
 import { BadRequestException } from '@nestjs/common';
-import { NoveltyType, PayrollStatus, SickLeaveOrigin } from '@prisma/client';
+import {
+  LeaveType,
+  NoveltyType,
+  PayrollStatus,
+  SickLeaveOrigin,
+} from '@prisma/client';
 import { Test, TestingModule } from '@nestjs/testing';
 import { AuditService } from '../audit/audit.service';
 import { PrismaService } from '../prisma/prisma.service';
@@ -136,6 +141,7 @@ describe('PayrollNoveltiesService', () => {
       sickLeaveOrigin: SickLeaveOrigin.COMMON_DISEASE,
       sickLeaveStartDay: 1,
       sickLeaveIbc: 3000000,
+      leaveType: null,
       dayType: 'REGULAR',
       quantity: 2,
       amount: null,
@@ -166,6 +172,7 @@ describe('PayrollNoveltiesService', () => {
         sickLeaveOrigin: SickLeaveOrigin.COMMON_DISEASE,
         sickLeaveStartDay: 1,
         sickLeaveIbc: 3000000,
+        leaveType: undefined,
         quantity: 2,
         amount: undefined,
         description: 'Incapacidad por enfermedad común',
@@ -179,6 +186,131 @@ describe('PayrollNoveltiesService', () => {
       entity: 'PayrollNovelty',
       entityId: 'novelty-1',
       newValue: createdNovelty,
+    });
+
+    expect(result).toEqual(createdNovelty);
+  });
+
+  it('should reject leave without leave type', async () => {
+    await expect(
+      service.create('company-1', 'user-1', {
+        employeeId: 'employee-1',
+        payrollPeriodId: 'period-1',
+        type: NoveltyType.LEAVE,
+        quantity: 2,
+      }),
+    ).rejects.toBeInstanceOf(BadRequestException);
+
+    expect(prismaMock.payrollNovelty.create).not.toHaveBeenCalled();
+  });
+
+  it('should reject leave type for non leave novelty', async () => {
+    await expect(
+      service.create('company-1', 'user-1', {
+        employeeId: 'employee-1',
+        payrollPeriodId: 'period-1',
+        type: NoveltyType.BONUS,
+        leaveType: LeaveType.PAID,
+        amount: 100000,
+      }),
+    ).rejects.toBeInstanceOf(BadRequestException);
+
+    expect(prismaMock.payrollNovelty.create).not.toHaveBeenCalled();
+  });
+
+  it('should create paid leave', async () => {
+    const createdNovelty = {
+      id: 'leave-1',
+      companyId: 'company-1',
+      employeeId: 'employee-1',
+      payrollPeriodId: 'period-1',
+      type: NoveltyType.LEAVE,
+      dayType: 'REGULAR',
+      sickLeaveOrigin: null,
+      sickLeaveStartDay: null,
+      sickLeaveIbc: null,
+      leaveType: LeaveType.PAID,
+      quantity: 3,
+      amount: null,
+      description: 'Licencia remunerada',
+      createdAt: new Date(),
+    };
+
+    prismaMock.payrollNovelty.create.mockResolvedValue(createdNovelty);
+
+    const result = await service.create('company-1', 'user-1', {
+      employeeId: 'employee-1',
+      payrollPeriodId: 'period-1',
+      type: NoveltyType.LEAVE,
+      leaveType: LeaveType.PAID,
+      quantity: 3,
+      description: 'Licencia remunerada',
+    });
+
+    expect(prismaMock.payrollNovelty.create).toHaveBeenCalledWith({
+      data: {
+        companyId: 'company-1',
+        employeeId: 'employee-1',
+        payrollPeriodId: 'period-1',
+        type: NoveltyType.LEAVE,
+        dayType: undefined,
+        sickLeaveOrigin: undefined,
+        sickLeaveStartDay: undefined,
+        sickLeaveIbc: undefined,
+        leaveType: LeaveType.PAID,
+        quantity: 3,
+        amount: undefined,
+        description: 'Licencia remunerada',
+      },
+    });
+
+    expect(result).toEqual(createdNovelty);
+  });
+
+  it('should create unpaid leave', async () => {
+    const createdNovelty = {
+      id: 'leave-2',
+      companyId: 'company-1',
+      employeeId: 'employee-1',
+      payrollPeriodId: 'period-1',
+      type: NoveltyType.LEAVE,
+      dayType: 'REGULAR',
+      sickLeaveOrigin: null,
+      sickLeaveStartDay: null,
+      sickLeaveIbc: null,
+      leaveType: LeaveType.UNPAID,
+      quantity: 4,
+      amount: null,
+      description: 'Licencia no remunerada',
+      createdAt: new Date(),
+    };
+
+    prismaMock.payrollNovelty.create.mockResolvedValue(createdNovelty);
+
+    const result = await service.create('company-1', 'user-1', {
+      employeeId: 'employee-1',
+      payrollPeriodId: 'period-1',
+      type: NoveltyType.LEAVE,
+      leaveType: LeaveType.UNPAID,
+      quantity: 4,
+      description: 'Licencia no remunerada',
+    });
+
+    expect(prismaMock.payrollNovelty.create).toHaveBeenCalledWith({
+      data: {
+        companyId: 'company-1',
+        employeeId: 'employee-1',
+        payrollPeriodId: 'period-1',
+        type: NoveltyType.LEAVE,
+        dayType: undefined,
+        sickLeaveOrigin: undefined,
+        sickLeaveStartDay: undefined,
+        sickLeaveIbc: undefined,
+        leaveType: LeaveType.UNPAID,
+        quantity: 4,
+        amount: undefined,
+        description: 'Licencia no remunerada',
+      },
     });
 
     expect(result).toEqual(createdNovelty);

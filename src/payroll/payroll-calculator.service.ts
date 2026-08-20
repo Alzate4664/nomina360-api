@@ -12,6 +12,7 @@ import { SundayHolidayCalculator } from './calculator/concepts/sunday-holiday.ca
 import { TransportAllowanceCalculator } from './calculator/concepts/transport-allowance.calculator';
 import { SickLeaveCalculator } from './calculator/concepts/sick-leave.calculator';
 import { VacationCalculator } from './calculator/concepts/vacation.calculator';
+import { LeaveCalculator } from './calculator/concepts/leave.calculator';
 
 interface PayrollConcept {
   code: string;
@@ -35,6 +36,7 @@ export class PayrollCalculatorService {
     private readonly transportAllowanceCalculator: TransportAllowanceCalculator,
     private readonly sickLeaveCalculator: SickLeaveCalculator,
     private readonly vacationCalculator: VacationCalculator,
+    private readonly leaveCalculator: LeaveCalculator,
   ) {}
 
   calculate(input: {
@@ -51,8 +53,16 @@ export class PayrollCalculatorService {
       input.novelties,
     );
 
+    const leaveResult = this.leaveCalculator.calculate(
+      input.baseSalary,
+      input.novelties,
+    );
+
     const ordinaryWorkedDays = Math.max(
-      input.workedDays - sickLeaveResult.days - vacationResult.days,
+      input.workedDays -
+        sickLeaveResult.days -
+        vacationResult.days -
+        leaveResult.days,
       0,
     );
 
@@ -95,6 +105,7 @@ export class PayrollCalculatorService {
       baseSalaryResult.earned +
       sickLeaveResult.earned +
       vacationResult.earned +
+      leaveResult.earned +
       bonusResult.earned +
       overtimeResult.earned +
       nightSurchargeResult.earned +
@@ -116,6 +127,7 @@ export class PayrollCalculatorService {
       ...baseSalaryResult.concepts,
       ...sickLeaveResult.concepts,
       ...vacationResult.concepts,
+      ...leaveResult.concepts,
       ...bonusResult.concepts,
       ...overtimeResult.concepts,
       ...nightSurchargeResult.concepts,
