@@ -1,12 +1,14 @@
 import {
   IsDateString,
   IsEmail,
+  IsEnum,
   IsNotEmpty,
   IsNumber,
   IsOptional,
   IsString,
   Min,
 } from 'class-validator';
+import { ContractType } from '@prisma/client';
 
 export class CreateEmployeeDto {
   @IsString()
@@ -41,9 +43,12 @@ export class CreateEmployeeDto {
   @IsString()
   department?: string;
 
-  @IsString()
-  @IsNotEmpty()
-  contractType: string;
+  @IsEnum(ContractType)
+  contractType: ContractType;
+
+  @IsOptional()
+  @IsDateString()
+  contractEndDate?: string;
 
   @IsNumber()
   @Min(0)

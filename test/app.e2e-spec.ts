@@ -318,7 +318,7 @@ describe('Nomina360 API (e2e)', () => {
         phone: '3001234567',
         position: 'Auxiliar de pruebas',
         department: 'Tecnología',
-        contractType: 'Indefinido',
+        contractType: 'INDEFINITE',
         baseSalary: 1800000,
         startDate: '2026-01-15',
         eps: 'Sura',

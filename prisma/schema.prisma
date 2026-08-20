@@ -36,20 +36,21 @@ model User {
 }
 
 model Employee {
-  id             String         @id @default(uuid())
-  companyId      String
-  firstName      String
-  lastName       String
-  documentType   String
-  documentNumber String
-  email          String?
-  phone          String?
-  position       String
-  department     String?
-  contractType   String
-  baseSalary     Decimal
-  startDate      DateTime
-  status         EmployeeStatus @default(ACTIVE)
+  id              String         @id @default(uuid())
+  companyId       String
+  firstName       String
+  lastName        String
+  documentType    String
+  documentNumber  String
+  email           String?
+  phone           String?
+  position        String
+  department      String?
+  contractType    ContractType
+  contractEndDate DateTime?
+  baseSalary      Decimal
+  startDate       DateTime
+  status          EmployeeStatus @default(ACTIVE)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -228,6 +229,13 @@ enum SickLeaveOrigin {
 enum LeaveType {
   PAID
   UNPAID
+}
+
+enum ContractType {
+  INDEFINITE
+  FIXED_TERM
+  WORK_OR_LABOR
+  APPRENTICESHIP
 }
 
 model AuditLog {

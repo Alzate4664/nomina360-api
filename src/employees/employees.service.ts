@@ -19,6 +19,20 @@ export class EmployeesService {
     currentUserId: string,
     dto: CreateEmployeeDto,
   ) {
+    if (dto.contractType === 'FIXED_TERM' && !dto.contractEndDate) {
+      throw new BadRequestException(
+        'La fecha de finalización es obligatoria para contratos a término fijo',
+      );
+    }
+
+    if (
+      dto.contractEndDate &&
+      new Date(dto.contractEndDate) < new Date(dto.startDate)
+    ) {
+      throw new BadRequestException(
+        'La fecha de finalización del contrato no puede ser anterior a la fecha de inicio',
+      );
+    }
     const existingEmployee = await this.prisma.employee.findFirst({
       where: {
         companyId,
@@ -44,6 +58,9 @@ export class EmployeesService {
         position: dto.position,
         department: dto.department,
         contractType: dto.contractType,
+        contractEndDate: dto.contractEndDate
+          ? new Date(dto.contractEndDate)
+          : undefined,
         baseSalary: dto.baseSalary,
         startDate: new Date(dto.startDate),
         eps: dto.eps,
