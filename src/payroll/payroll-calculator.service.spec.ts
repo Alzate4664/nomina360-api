@@ -12,6 +12,7 @@ import { SickLeaveCalculator } from './calculator/concepts/sick-leave.calculator
 import { SundayHolidayCalculator } from './calculator/concepts/sunday-holiday.calculator';
 import { TransportAllowanceCalculator } from './calculator/concepts/transport-allowance.calculator';
 import { PayrollCalculatorService } from './payroll-calculator.service';
+import { VacationCalculator } from './calculator/concepts/vacation.calculator';
 
 describe('PayrollCalculatorService', () => {
   let calculator: PayrollCalculatorService;
@@ -29,6 +30,7 @@ describe('PayrollCalculatorService', () => {
       new SundayHolidayCalculator(),
       new TransportAllowanceCalculator(),
       new SickLeaveCalculator(),
+      new VacationCalculator(),
     );
   });
 
@@ -122,6 +124,60 @@ describe('PayrollCalculatorService', () => {
           amount: expectedTransportAllowance,
         }),
       ]),
+    );
+  });
+
+  it('should exclude vacation days from ordinary salary and transport allowance', () => {
+    const baseSalary = PAYROLL_RATES.minimumWage;
+
+    const vacationNovelty = {
+      id: 'vacation-1',
+      companyId: 'company-1',
+      employeeId: 'employee-1',
+      payrollPeriodId: 'period-1',
+      type: 'VACATION' as const,
+      dayType: null,
+      sickLeaveOrigin: null,
+      sickLeaveStartDay: null,
+      sickLeaveIbc: null,
+      quantity: 5,
+      amount: null,
+      description: 'Vacaciones',
+      createdAt: new Date(),
+    };
+
+    const result = calculator.calculate({
+      baseSalary,
+      workedDays: 30,
+      novelties: [vacationNovelty],
+    });
+
+    const dailySalary = baseSalary / 30;
+
+    const expectedOrdinarySalary = dailySalary * 25;
+    const expectedVacationPay = dailySalary * 5;
+
+    const baseSalaryConcept = result.concepts.find(
+      (concept) => concept.code === 'BASE_SALARY',
+    );
+
+    const vacationConcept = result.concepts.find(
+      (concept) => concept.code === 'VACATION',
+    );
+
+    const transportConcept = result.concepts.find(
+      (concept) => concept.code === 'TRANSPORT_ALLOWANCE',
+    );
+
+    expect(baseSalaryConcept?.amount).toBeCloseTo(expectedOrdinarySalary);
+    expect(vacationConcept?.amount).toBeCloseTo(expectedVacationPay);
+
+    expect(
+      (baseSalaryConcept?.amount ?? 0) + (vacationConcept?.amount ?? 0),
+    ).toBeCloseTo(baseSalary);
+
+    expect(transportConcept?.amount).toBe(
+      Math.round((PAYROLL_RATES.transportAllowance.monthlyAmount / 30) * 25),
     );
   });
 });
