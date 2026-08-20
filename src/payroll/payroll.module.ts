@@ -23,6 +23,9 @@ import { TransportAllowanceCalculator } from './calculator/concepts/transport-al
 import { SickLeaveCalculator } from './calculator/concepts/sick-leave.calculator';
 import { VacationCalculator } from './calculator/concepts/vacation.calculator';
 import { LeaveCalculator } from './calculator/concepts/leave.calculator';
+import { AccruedDaysCalculator } from './calculator/accrued-days.calculator';
+import { SeverancePayrollCalculator } from './calculator/severance-payroll.calculator';
+import { SeveranceCalculator } from './calculator/concepts/severance.calculator';
 
 @Module({
   imports: [
@@ -50,6 +53,9 @@ import { LeaveCalculator } from './calculator/concepts/leave.calculator';
     SickLeaveCalculator,
     VacationCalculator,
     LeaveCalculator,
+    AccruedDaysCalculator,
+    SeveranceCalculator,
+    SeverancePayrollCalculator,
     CreatePayrollPeriodUseCase,
     FindPayrollPeriodsUseCase,
     FindPayrollPeriodUseCase,

@@ -3,12 +3,16 @@ import { AuditService } from '../../audit/audit.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { PayrollCalculatorService } from '../payroll-calculator.service';
 import { PayrollStatus, PayrollType } from '@prisma/client';
+import { AccruedDaysCalculator } from '../calculator/accrued-days.calculator';
+import { SeverancePayrollCalculator } from '../calculator/severance-payroll.calculator';
 
 @Injectable()
 export class CalculatePayrollUseCase {
   constructor(
     private readonly prisma: PrismaService,
     private readonly calculator: PayrollCalculatorService,
+    private readonly severancePayrollCalculator: SeverancePayrollCalculator,
+    private readonly accruedDaysCalculator: AccruedDaysCalculator,
     private readonly auditService: AuditService,
   ) {}
 
@@ -108,11 +112,30 @@ export class CalculatePayrollUseCase {
         },
       });
 
-      const calculation = this.calculator.calculate({
-        baseSalary: Number(employee.baseSalary),
-        workedDays: 30,
-        novelties,
-      });
+      let calculation;
+
+      if (payrollType === PayrollType.SEVERANCE) {
+        const accruedDays = this.accruedDaysCalculator.calculate(
+          employee.startDate,
+          year,
+          month,
+        );
+
+        if (accruedDays <= 0) {
+          continue;
+        }
+
+        calculation = this.severancePayrollCalculator.calculate({
+          baseSalary: Number(employee.baseSalary),
+          accruedDays,
+        });
+      } else {
+        calculation = this.calculator.calculate({
+          baseSalary: Number(employee.baseSalary),
+          workedDays: 30,
+          novelties,
+        });
+      }
 
       const payrollItem = await this.prisma.payrollItem.create({
         data: {
