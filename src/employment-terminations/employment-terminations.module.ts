@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { JwtModule } from '@nestjs/jwt';
+import { PayrollModule } from '../payroll/payroll.module';
 import { EmploymentTerminationsController } from './employment-terminations.controller';
 import { EmploymentTerminationsService } from './employment-terminations.service';
 
@@ -11,6 +12,7 @@ import { EmploymentTerminationsService } from './employment-terminations.service
         expiresIn: '1d',
       },
     }),
+    PayrollModule,
   ],
   controllers: [EmploymentTerminationsController],
   providers: [EmploymentTerminationsService],

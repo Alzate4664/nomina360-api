@@ -81,16 +81,40 @@ model EmploymentTermination {
   unpaidSalaryStartDate DateTime?
   pendingVacationDays   Decimal?
 
+  calculatedBaseSalary Decimal?
+  salaryDays           Int?
+  severanceDays        Int?
+  serviceBonusDays     Int?
+  earnedTotal          Decimal?
+  calculatedAt         DateTime?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   company  Company  @relation(fields: [companyId], references: [id])
   employee Employee @relation(fields: [employeeId], references: [id])
 
+  concepts EmploymentTerminationConcept[]
+
   @@index([companyId])
   @@index([employeeId])
   @@index([companyId, status])
   @@index([terminationDate])
+}
+
+model EmploymentTerminationConcept {
+  id                      String      @id @default(uuid())
+  employmentTerminationId String
+  conceptCode             String
+  conceptName             String
+  type                    ConceptType
+  amount                  Decimal
+
+  createdAt DateTime @default(now())
+
+  employmentTermination EmploymentTermination @relation(fields: [employmentTerminationId], references: [id], onDelete: Cascade)
+
+  @@index([employmentTerminationId])
 }
 
 model PayrollPeriod {

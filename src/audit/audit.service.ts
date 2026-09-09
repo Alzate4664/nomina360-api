@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
-import { PrismaService } from '../prisma/prisma.service';
 import type { Prisma } from '@prisma/client';
+import { PrismaService } from '../prisma/prisma.service';
 
 interface CreateAuditLogInput {
   companyId?: string;
@@ -16,8 +16,11 @@ interface CreateAuditLogInput {
 export class AuditService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async log(data: CreateAuditLogInput) {
-    return this.prisma.auditLog.create({
+  async log(
+    data: CreateAuditLogInput,
+    client: Prisma.TransactionClient | PrismaService = this.prisma,
+  ) {
+    return client.auditLog.create({
       data: {
         companyId: data.companyId,
         userId: data.userId,

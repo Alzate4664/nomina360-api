@@ -6,12 +6,16 @@ import {
 import { AuditService } from '../audit/audit.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateEmploymentTerminationDto } from './dto/create-employment-termination.dto';
+import { TerminationStatus } from '@prisma/client';
+import { TerminationPayrollCalculator } from '../payroll/calculator/termination-payroll.calculator';
+import { CalculateEmploymentTerminationDto } from './dto/calculate-employment-termination.dto';
 
 @Injectable()
 export class EmploymentTerminationsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly auditService: AuditService,
+    private readonly terminationPayrollCalculator: TerminationPayrollCalculator,
   ) {}
 
   async create(
@@ -84,6 +88,147 @@ export class EmploymentTerminationsService {
     });
 
     return termination;
+  }
+
+  async calculate(
+    companyId: string,
+    currentUserId: string,
+    id: string,
+    dto: CalculateEmploymentTerminationDto,
+  ) {
+    const termination = await this.prisma.employmentTermination.findFirst({
+      where: {
+        id,
+        companyId,
+      },
+      include: {
+        employee: true,
+        concepts: true,
+      },
+    });
+
+    if (!termination) {
+      throw new NotFoundException('Proceso de terminación no encontrado');
+    }
+
+    const allowedStatuses: TerminationStatus[] = [
+      TerminationStatus.DRAFT,
+      TerminationStatus.CALCULATED,
+    ];
+
+    if (!allowedStatuses.includes(termination.status)) {
+      throw new BadRequestException(
+        `La terminación en estado ${termination.status} no puede calcularse ni recalcularse`,
+      );
+    }
+
+    const unpaidSalaryStartDate = new Date(dto.unpaidSalaryStartDate);
+
+    if (unpaidSalaryStartDate < termination.employee.startDate) {
+      throw new BadRequestException(
+        'La fecha inicial del salario pendiente no puede ser anterior a la fecha de inicio del contrato',
+      );
+    }
+
+    if (unpaidSalaryStartDate > termination.terminationDate) {
+      throw new BadRequestException(
+        'La fecha inicial del salario pendiente no puede ser posterior a la fecha de terminación',
+      );
+    }
+
+    const pendingVacationDays = dto.pendingVacationDays ?? 0;
+
+    const calculation = this.terminationPayrollCalculator.calculate({
+      baseSalary: Number(termination.employee.baseSalary),
+      employeeStartDate: termination.employee.startDate,
+      terminationDate: termination.terminationDate,
+      unpaidSalaryStartDate,
+      pendingVacationDays,
+    });
+
+    const calculatedAt = new Date();
+
+    const updatedTermination = await this.prisma.$transaction(async (tx) => {
+      await tx.employmentTerminationConcept.deleteMany({
+        where: {
+          employmentTerminationId: termination.id,
+        },
+      });
+
+      const updated = await tx.employmentTermination.update({
+        where: {
+          id: termination.id,
+        },
+        data: {
+          unpaidSalaryStartDate,
+          pendingVacationDays,
+          calculatedBaseSalary: Number(termination.employee.baseSalary),
+          salaryDays: calculation.salaryDays,
+          severanceDays: calculation.severanceDays,
+          serviceBonusDays: calculation.serviceBonusDays,
+          earnedTotal: calculation.earnedTotal,
+          calculatedAt,
+          status: TerminationStatus.CALCULATED,
+        },
+      });
+
+      if (calculation.concepts.length > 0) {
+        await tx.employmentTerminationConcept.createMany({
+          data: calculation.concepts.map((concept) => ({
+            employmentTerminationId: termination.id,
+            conceptCode: concept.code,
+            conceptName: concept.name,
+            type: concept.type,
+            amount: concept.amount,
+          })),
+        });
+      }
+
+      await this.auditService.log(
+        {
+          companyId,
+          userId: currentUserId,
+          action: 'CALCULATE_EMPLOYMENT_TERMINATION',
+          entity: 'EmploymentTermination',
+          entityId: termination.id,
+          oldValue: {
+            status: termination.status,
+            calculatedBaseSalary:
+              termination.calculatedBaseSalary?.toString() ?? null,
+            earnedTotal: termination.earnedTotal?.toString() ?? null,
+            calculatedAt: termination.calculatedAt?.toISOString() ?? null,
+          },
+          newValue: {
+            status: TerminationStatus.CALCULATED,
+            calculatedBaseSalary: Number(termination.employee.baseSalary),
+            salaryDays: calculation.salaryDays,
+            severanceDays: calculation.severanceDays,
+            serviceBonusDays: calculation.serviceBonusDays,
+            pendingVacationDays,
+            earnedTotal: calculation.earnedTotal,
+            calculatedAt: calculatedAt.toISOString(),
+          },
+        },
+        tx,
+      );
+
+      return updated;
+    });
+
+    return this.prisma.employmentTermination.findFirst({
+      where: {
+        id: updatedTermination.id,
+        companyId,
+      },
+      include: {
+        employee: true,
+        concepts: {
+          orderBy: {
+            createdAt: 'asc',
+          },
+        },
+      },
+    });
   }
 
   async findAll(companyId: string, page = 1, limit = 20) {

@@ -16,6 +16,7 @@ import type { AuthenticatedUser } from '../common/types/authenticated-user.type'
 import { parsePositiveInteger } from '../common/utils/pagination.util';
 import { CreateEmploymentTerminationDto } from './dto/create-employment-termination.dto';
 import { EmploymentTerminationsService } from './employment-terminations.service';
+import { CalculateEmploymentTerminationDto } from './dto/calculate-employment-termination.dto';
 
 @ApiTags('Employment Terminations')
 @ApiBearerAuth()
@@ -35,6 +36,21 @@ export class EmploymentTerminationsController {
     return this.employmentTerminationsService.create(
       user.companyId,
       user.sub,
+      dto,
+    );
+  }
+
+  @Post(':id/calculate')
+  @Roles('OWNER', 'ADMIN')
+  calculate(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+    @Body() dto: CalculateEmploymentTerminationDto,
+  ) {
+    return this.employmentTerminationsService.calculate(
+      user.companyId,
+      user.sub,
+      id,
       dto,
     );
   }
