@@ -565,6 +565,14 @@ describe('EmploymentTerminationsService', () => {
       employmentTermination: {
         update: jest.fn().mockResolvedValue(termination),
       },
+
+      employee: {
+        update: jest.fn().mockResolvedValue({
+          id: 'employee-1',
+          status: EmployeeStatus.INACTIVE,
+        }),
+      },
+
       auditLog: {
         create: jest.fn(),
       },
@@ -626,6 +634,91 @@ describe('EmploymentTerminationsService', () => {
     });
 
     expect(result).toEqual(approvedTermination);
+  });
+
+  it('should close an approved employment termination and deactivate the employee', async () => {
+    const termination = {
+      id: 'termination-1',
+      companyId,
+      employeeId: 'employee-1',
+      terminationDate: new Date('2026-09-08T00:00:00.000Z'),
+      reason: TerminationReason.RESIGNATION,
+      status: TerminationStatus.APPROVED,
+      notes: null,
+      concepts: [],
+      employee: {
+        id: 'employee-1',
+        companyId,
+        status: EmployeeStatus.ACTIVE,
+      },
+    };
+
+    const closedTermination = {
+      ...termination,
+      status: TerminationStatus.CLOSED,
+      employee: {
+        ...termination.employee,
+        status: EmployeeStatus.INACTIVE,
+      },
+    };
+
+    const closeTx = {
+      employmentTermination: {
+        update: jest.fn().mockResolvedValue({
+          ...termination,
+          status: TerminationStatus.CLOSED,
+        }),
+      },
+      employee: {
+        update: jest.fn().mockResolvedValue({
+          ...termination.employee,
+          status: EmployeeStatus.INACTIVE,
+        }),
+      },
+      auditLog: {
+        create: jest.fn().mockResolvedValue({}),
+      },
+    };
+
+    prisma.employmentTermination.findFirst
+      .mockResolvedValueOnce(termination)
+      .mockResolvedValueOnce(closedTermination);
+
+    prisma.$transaction.mockImplementation(async (callback) => {
+      return callback(closeTx);
+    });
+
+    const result = await service.close(companyId, userId, 'termination-1');
+
+    expect(prisma.employmentTermination.findFirst).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        where: {
+          id: 'termination-1',
+          companyId,
+        },
+      }),
+    );
+
+    expect(closeTx.employmentTermination.update).toHaveBeenCalledWith({
+      where: {
+        id: 'termination-1',
+      },
+      data: {
+        status: TerminationStatus.CLOSED,
+      },
+    });
+
+    expect(closeTx.employee.update).toHaveBeenCalledWith({
+      where: {
+        id: 'employee-1',
+      },
+      data: {
+        status: EmployeeStatus.INACTIVE,
+      },
+    });
+
+    expect(result).toEqual(closedTermination);
   });
 
   it('should register approval in audit log using transaction client', async () => {
@@ -748,5 +841,164 @@ describe('EmploymentTerminationsService', () => {
 
     expect(prisma.$transaction).not.toHaveBeenCalled();
     expect(auditService.log).not.toHaveBeenCalled();
+  });
+
+  it('should reject closing a draft termination', async () => {
+    prisma.employmentTermination.findFirst.mockResolvedValue({
+      id: 'termination-1',
+      companyId,
+      employeeId: 'employee-1',
+      status: TerminationStatus.DRAFT,
+      employee: {
+        id: 'employee-1',
+        status: EmployeeStatus.ACTIVE,
+      },
+      concepts: [],
+    });
+
+    await expect(
+      service.close(companyId, userId, 'termination-1'),
+    ).rejects.toThrow(BadRequestException);
+  });
+
+  it('should reject closing a calculated termination', async () => {
+    prisma.employmentTermination.findFirst.mockResolvedValue({
+      id: 'termination-1',
+      companyId,
+      employeeId: 'employee-1',
+      status: TerminationStatus.CALCULATED,
+      employee: {
+        id: 'employee-1',
+        status: EmployeeStatus.ACTIVE,
+      },
+      concepts: [],
+    });
+
+    await expect(
+      service.close(companyId, userId, 'termination-1'),
+    ).rejects.toThrow(BadRequestException);
+  });
+
+  it('should reject closing an already closed termination', async () => {
+    prisma.employmentTermination.findFirst.mockResolvedValue({
+      id: 'termination-1',
+      companyId,
+      employeeId: 'employee-1',
+      status: TerminationStatus.CLOSED,
+      employee: {
+        id: 'employee-1',
+        status: EmployeeStatus.INACTIVE,
+      },
+      concepts: [],
+    });
+
+    await expect(
+      service.close(companyId, userId, 'termination-1'),
+    ).rejects.toThrow(BadRequestException);
+  });
+
+  it('should reject closing when employee is already inactive', async () => {
+    prisma.employmentTermination.findFirst.mockResolvedValue({
+      id: 'termination-1',
+      companyId,
+      employeeId: 'employee-1',
+      status: TerminationStatus.APPROVED,
+      employee: {
+        id: 'employee-1',
+        status: EmployeeStatus.INACTIVE,
+      },
+      concepts: [],
+    });
+
+    await expect(
+      service.close(companyId, userId, 'termination-1'),
+    ).rejects.toThrow(BadRequestException);
+  });
+
+  it('should enforce company isolation when closing a termination', async () => {
+    prisma.employmentTermination.findFirst.mockResolvedValue(null);
+
+    await expect(
+      service.close(companyId, userId, 'termination-1'),
+    ).rejects.toThrow(NotFoundException);
+
+    expect(prisma.employmentTermination.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          id: 'termination-1',
+          companyId,
+        },
+      }),
+    );
+  });
+
+  it('should register closing audit using transaction client', async () => {
+    const termination = {
+      id: 'termination-1',
+      companyId,
+      employeeId: 'employee-1',
+      status: TerminationStatus.APPROVED,
+      employee: {
+        id: 'employee-1',
+        status: EmployeeStatus.ACTIVE,
+      },
+      concepts: [],
+    };
+
+    const closedTermination = {
+      ...termination,
+      status: TerminationStatus.CLOSED,
+      employee: {
+        ...termination.employee,
+        status: EmployeeStatus.INACTIVE,
+      },
+    };
+
+    const closeTx = {
+      employmentTermination: {
+        update: jest.fn().mockResolvedValue({
+          ...termination,
+          status: TerminationStatus.CLOSED,
+        }),
+      },
+      employee: {
+        update: jest.fn().mockResolvedValue({
+          ...termination.employee,
+          status: EmployeeStatus.INACTIVE,
+        }),
+      },
+      auditLog: {
+        create: jest.fn().mockResolvedValue({}),
+      },
+    };
+
+    prisma.employmentTermination.findFirst
+      .mockResolvedValueOnce(termination)
+      .mockResolvedValueOnce(closedTermination);
+
+    prisma.$transaction.mockImplementation(async (callback) => {
+      return callback(closeTx);
+    });
+
+    await service.close(companyId, userId, 'termination-1');
+
+    expect(auditService.log).toHaveBeenCalledWith(
+      expect.objectContaining({
+        companyId,
+        userId,
+        action: 'CLOSE_EMPLOYMENT_TERMINATION',
+        entity: 'EmploymentTermination',
+        entityId: 'termination-1',
+        oldValue: expect.objectContaining({
+          status: TerminationStatus.APPROVED,
+          employeeStatus: EmployeeStatus.ACTIVE,
+        }),
+        newValue: expect.objectContaining({
+          status: TerminationStatus.CLOSED,
+          employeeStatus: EmployeeStatus.INACTIVE,
+        }),
+      }),
+      closeTx,
+    );
   });
 });

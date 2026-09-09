@@ -14,6 +14,7 @@ describe('EmploymentTerminationsController', () => {
     findOne: jest.fn(),
     calculate: jest.fn(),
     approve: jest.fn(),
+    close: jest.fn(),
   };
 
   const user = {
@@ -149,6 +150,25 @@ describe('EmploymentTerminationsController', () => {
     const result = await controller.approve(user as any, 'termination-1');
 
     expect(service.approve).toHaveBeenCalledWith(
+      user.companyId,
+      user.sub,
+      'termination-1',
+    );
+
+    expect(result).toEqual(expected);
+  });
+
+  it('should close an employment termination using authenticated user context', async () => {
+    const expected = {
+      id: 'termination-1',
+      status: 'CLOSED',
+    };
+
+    service.close.mockResolvedValue(expected);
+
+    const result = await controller.close(user as any, 'termination-1');
+
+    expect(service.close).toHaveBeenCalledWith(
       user.companyId,
       user.sub,
       'termination-1',

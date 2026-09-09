@@ -65,6 +65,16 @@ export class EmploymentTerminationsController {
     );
   }
 
+  @Post(':id/close')
+  @Roles('OWNER', 'ADMIN')
+  close(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+    return this.employmentTerminationsService.close(
+      user.companyId,
+      user.sub,
+      id,
+    );
+  }
+
   @Get()
   @Roles('OWNER', 'ADMIN', 'ACCOUNTANT', 'VIEWER')
   findAll(

@@ -6,7 +6,7 @@ import {
 import { AuditService } from '../audit/audit.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateEmploymentTerminationDto } from './dto/create-employment-termination.dto';
-import { TerminationStatus } from '@prisma/client';
+import { EmployeeStatus, TerminationStatus } from '@prisma/client';
 import { TerminationPayrollCalculator } from '../payroll/calculator/termination-payroll.calculator';
 import { CalculateEmploymentTerminationDto } from './dto/calculate-employment-termination.dto';
 
@@ -285,6 +285,91 @@ export class EmploymentTerminationsService {
           },
           newValue: {
             status: TerminationStatus.APPROVED,
+          },
+        },
+        tx,
+      );
+
+      return updated;
+    });
+
+    return this.prisma.employmentTermination.findFirst({
+      where: {
+        id: updatedTermination.id,
+        companyId,
+      },
+      include: {
+        employee: true,
+        concepts: {
+          orderBy: {
+            createdAt: 'asc',
+          },
+        },
+      },
+    });
+  }
+
+  async close(companyId: string, currentUserId: string, id: string) {
+    const termination = await this.prisma.employmentTermination.findFirst({
+      where: {
+        id,
+        companyId,
+      },
+      include: {
+        employee: true,
+        concepts: true,
+      },
+    });
+
+    if (!termination) {
+      throw new NotFoundException('Proceso de terminación no encontrado');
+    }
+
+    if (termination.status !== TerminationStatus.APPROVED) {
+      throw new BadRequestException(
+        `La terminación en estado ${termination.status} no puede cerrarse`,
+      );
+    }
+
+    if (termination.employee.status !== EmployeeStatus.ACTIVE) {
+      throw new BadRequestException(
+        'El colaborador debe estar activo al momento de cerrar la terminación',
+      );
+    }
+
+    const updatedTermination = await this.prisma.$transaction(async (tx) => {
+      const updated = await tx.employmentTermination.update({
+        where: {
+          id: termination.id,
+        },
+        data: {
+          status: TerminationStatus.CLOSED,
+        },
+      });
+
+      await tx.employee.update({
+        where: {
+          id: termination.employeeId,
+        },
+        data: {
+          status: EmployeeStatus.INACTIVE,
+        },
+      });
+
+      await this.auditService.log(
+        {
+          companyId,
+          userId: currentUserId,
+          action: 'CLOSE_EMPLOYMENT_TERMINATION',
+          entity: 'EmploymentTermination',
+          entityId: termination.id,
+          oldValue: {
+            status: termination.status,
+            employeeStatus: termination.employee.status,
+          },
+          newValue: {
+            status: TerminationStatus.CLOSED,
+            employeeStatus: EmployeeStatus.INACTIVE,
           },
         },
         tx,
