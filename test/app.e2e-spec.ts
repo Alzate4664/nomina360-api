@@ -13,12 +13,18 @@ describe('Nomina360 API (e2e)', () => {
   let createdEmployeeId: string | undefined;
   let createdPayrollPeriodId: string | undefined;
   let createdNoveltyId: string | undefined;
+  let terminationEmployeeId: string | undefined;
+  let employmentTerminationId: string | undefined;
 
   const uniqueSuffix = `${Date.now()}-${Math.floor(Math.random() * 10000)}`;
 
   const testUserEmail = `usuario-e2e-${uniqueSuffix}@nomina360.test`;
   const testEmployeeEmail = `empleado-e2e-${uniqueSuffix}@nomina360.test`;
   const testDocumentNumber = `E2E${Date.now()}`;
+
+  const terminationEmployeeEmail = `terminacion-e2e-${uniqueSuffix}@nomina360.test`;
+
+  const terminationDocumentNumber = `TERM${Date.now()}`;
 
   const testPayrollYear = 2099;
   const testPayrollMonth = 12;
@@ -45,6 +51,21 @@ describe('Nomina360 API (e2e)', () => {
   });
 
   afterAll(async () => {
+    if (employmentTerminationId) {
+      await prisma.employmentTermination.deleteMany({
+        where: {
+          id: employmentTerminationId,
+        },
+      });
+    }
+
+    if (terminationEmployeeId) {
+      await prisma.employee.deleteMany({
+        where: {
+          id: terminationEmployeeId,
+        },
+      });
+    }
     try {
       if (createdNoveltyId) {
         await prisma.payrollNovelty.deleteMany({
@@ -83,6 +104,8 @@ describe('Nomina360 API (e2e)', () => {
         createdEmployeeId,
         createdPayrollPeriodId,
         createdNoveltyId,
+        terminationEmployeeId,
+        employmentTerminationId,
       ].filter((id): id is string => Boolean(id));
 
       if (entityIds.length > 0) {
@@ -461,6 +484,132 @@ describe('Nomina360 API (e2e)', () => {
 
     expect(auditRecord).toBeDefined();
     expect(auditRecord.action).toBe('DEACTIVATE_EMPLOYEE');
+  });
+
+  it('POST /employees debe crear un colaborador para terminación', async () => {
+    const response = await request(app.getHttpServer())
+      .post('/employees')
+      .set('Authorization', `Bearer ${ownerToken}`)
+      .send({
+        firstName: 'Laura',
+        lastName: 'Terminacion E2E',
+        documentType: 'CC',
+        documentNumber: terminationDocumentNumber,
+        email: terminationEmployeeEmail,
+        phone: '3009876543',
+        position: 'Analista E2E',
+        department: 'Pruebas',
+        contractType: 'INDEFINITE',
+        baseSalary: 3000000,
+        startDate: '2026-01-15',
+        eps: 'Sura',
+        pensionFund: 'Proteccion',
+        arl: 'Positiva',
+        compensationBox: 'Comfama',
+      })
+      .expect(201);
+
+    expect(response.body).toHaveProperty('id');
+    expect(response.body.status).toBe('ACTIVE');
+
+    terminationEmployeeId = response.body.id;
+  });
+
+  it('POST /employment-terminations debe crear una terminación en DRAFT', async () => {
+    const response = await request(app.getHttpServer())
+      .post('/employment-terminations')
+      .set('Authorization', `Bearer ${ownerToken}`)
+      .send({
+        employeeId: terminationEmployeeId,
+        terminationDate: '2026-09-08',
+        reason: 'RESIGNATION',
+        notes: 'Terminación automática E2E',
+      })
+      .expect(201);
+
+    expect(response.body).toHaveProperty('id');
+    expect(response.body.employeeId).toBe(terminationEmployeeId);
+    expect(response.body.status).toBe('DRAFT');
+
+    employmentTerminationId = response.body.id;
+  });
+
+  it('POST /employment-terminations/:id/calculate debe pasar a CALCULATED', async () => {
+    const response = await request(app.getHttpServer())
+      .post(`/employment-terminations/${employmentTerminationId}/calculate`)
+      .set('Authorization', `Bearer ${ownerToken}`)
+      .send({
+        unpaidSalaryStartDate: '2026-09-01',
+        pendingVacationDays: 7.5,
+      })
+      .expect(201);
+
+    expect(response.body.status).toBe('CALCULATED');
+    expect(response.body.calculatedAt).toBeDefined();
+    expect(Number(response.body.earnedTotal)).toBeGreaterThan(0);
+
+    expect(Array.isArray(response.body.concepts)).toBe(true);
+    expect(response.body.concepts.length).toBeGreaterThan(0);
+  });
+
+  it('POST /employment-terminations/:id/approve debe pasar a APPROVED', async () => {
+    const response = await request(app.getHttpServer())
+      .post(`/employment-terminations/${employmentTerminationId}/approve`)
+      .set('Authorization', `Bearer ${ownerToken}`)
+      .expect(201);
+
+    expect(response.body.id).toBe(employmentTerminationId);
+    expect(response.body.status).toBe('APPROVED');
+  });
+
+  it('POST /employment-terminations/:id/close debe cerrar y desactivar el colaborador', async () => {
+    const response = await request(app.getHttpServer())
+      .post(`/employment-terminations/${employmentTerminationId}/close`)
+      .set('Authorization', `Bearer ${ownerToken}`)
+      .expect(201);
+
+    expect(response.body.id).toBe(employmentTerminationId);
+    expect(response.body.status).toBe('CLOSED');
+
+    expect(response.body.employee).toBeDefined();
+    expect(response.body.employee.status).toBe('INACTIVE');
+  });
+
+  it('GET /employees/:id debe confirmar que el colaborador quedó INACTIVE', async () => {
+    const response = await request(app.getHttpServer())
+      .get(`/employees/${terminationEmployeeId}`)
+      .set('Authorization', `Bearer ${ownerToken}`)
+      .expect(200);
+
+    expect(response.body.id).toBe(terminationEmployeeId);
+    expect(response.body.status).toBe('INACTIVE');
+  });
+
+  it('GET /audit debe registrar CLOSE_EMPLOYMENT_TERMINATION', async () => {
+    const response = await request(app.getHttpServer())
+      .get(
+        '/audit?action=CLOSE_EMPLOYMENT_TERMINATION&entity=EmploymentTermination&page=1&limit=100',
+      )
+      .set('Authorization', `Bearer ${ownerToken}`)
+      .expect(200);
+
+    const auditRecord = response.body.data.find(
+      (record: { entityId?: string }) =>
+        record.entityId === employmentTerminationId,
+    );
+
+    expect(auditRecord).toBeDefined();
+    expect(auditRecord.action).toBe('CLOSE_EMPLOYMENT_TERMINATION');
+    expect(auditRecord.entity).toBe('EmploymentTermination');
+  });
+
+  it('POST /employment-terminations/:id/close debe rechazar un segundo cierre', async () => {
+    const response = await request(app.getHttpServer())
+      .post(`/employment-terminations/${employmentTerminationId}/close`)
+      .set('Authorization', `Bearer ${ownerToken}`)
+      .expect(400);
+
+    expect(response.body.message).toContain('no puede cerrarse');
   });
 
   it('GET /health debe responder 200 y confirmar conexión', async () => {
