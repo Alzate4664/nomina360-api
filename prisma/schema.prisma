@@ -17,9 +17,10 @@ model Company {
   createdAt DateTime      @default(now())
   updatedAt DateTime      @updatedAt
 
-  users          User[]
-  employees      Employee[]
-  payrollPeriods PayrollPeriod[]
+  users                  User[]
+  employees              Employee[]
+  payrollPeriods         PayrollPeriod[]
+  employmentTerminations EmploymentTermination[]
 }
 
 model User {
@@ -60,11 +61,33 @@ model Employee {
   arl             String?
   compensationBox String?
 
-  company      Company          @relation(fields: [companyId], references: [id])
+  company      Company                 @relation(fields: [companyId], references: [id])
   payrollItems PayrollItem[]
   novelties    PayrollNovelty[]
+  terminations EmploymentTermination[]
 
   @@unique([companyId, documentNumber])
+}
+
+model EmploymentTermination {
+  id              String            @id @default(uuid())
+  companyId       String
+  employeeId      String
+  terminationDate DateTime
+  reason          TerminationReason
+  status          TerminationStatus @default(DRAFT)
+  notes           String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  company  Company  @relation(fields: [companyId], references: [id])
+  employee Employee @relation(fields: [employeeId], references: [id])
+
+  @@index([companyId])
+  @@index([employeeId])
+  @@index([companyId, status])
+  @@index([terminationDate])
 }
 
 model PayrollPeriod {
@@ -169,6 +192,23 @@ enum UserRole {
 enum EmployeeStatus {
   ACTIVE
   INACTIVE
+}
+
+enum TerminationReason {
+  RESIGNATION
+  MUTUAL_AGREEMENT
+  FIXED_TERM_END
+  WORK_OR_LABOR_END
+  EMPLOYER_JUST_CAUSE
+  EMPLOYER_WITHOUT_JUST_CAUSE
+  OTHER
+}
+
+enum TerminationStatus {
+  DRAFT
+  CALCULATED
+  APPROVED
+  CLOSED
 }
 
 enum PayrollType {

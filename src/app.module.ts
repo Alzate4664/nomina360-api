@@ -11,6 +11,7 @@ import { PayrollModule } from './payroll/payroll.module';
 import { ReportsModule } from './reports/reports.module';
 import { UsersModule } from './users/users.module';
 import { AuditModule } from './audit/audit.module';
+import { EmploymentTerminationsModule } from './employment-terminations/employment-terminations.module';
 
 @Module({
   imports: [
@@ -19,6 +20,7 @@ import { AuditModule } from './audit/audit.module';
     AuthModule,
     CompaniesModule,
     EmployeesModule,
+    EmploymentTerminationsModule,
     PayrollNoveltiesModule,
     PayrollModule,
     ReportsModule,
