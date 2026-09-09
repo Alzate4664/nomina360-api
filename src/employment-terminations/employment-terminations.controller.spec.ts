@@ -13,6 +13,7 @@ describe('EmploymentTerminationsController', () => {
     findAll: jest.fn(),
     findOne: jest.fn(),
     calculate: jest.fn(),
+    approve: jest.fn(),
   };
 
   const user = {
@@ -131,6 +132,25 @@ describe('EmploymentTerminationsController', () => {
 
     expect(service.findOne).toHaveBeenCalledWith(
       user.companyId,
+      'termination-1',
+    );
+
+    expect(result).toEqual(expected);
+  });
+
+  it('should approve an employment termination using authenticated user context', async () => {
+    const expected = {
+      id: 'termination-1',
+      status: 'APPROVED',
+    };
+
+    service.approve.mockResolvedValue(expected);
+
+    const result = await controller.approve(user as any, 'termination-1');
+
+    expect(service.approve).toHaveBeenCalledWith(
+      user.companyId,
+      user.sub,
       'termination-1',
     );
 

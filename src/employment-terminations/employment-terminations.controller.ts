@@ -55,6 +55,16 @@ export class EmploymentTerminationsController {
     );
   }
 
+  @Post(':id/approve')
+  @Roles('OWNER', 'ADMIN')
+  approve(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+    return this.employmentTerminationsService.approve(
+      user.companyId,
+      user.sub,
+      id,
+    );
+  }
+
   @Get()
   @Roles('OWNER', 'ADMIN', 'ACCOUNTANT', 'VIEWER')
   findAll(

@@ -585,4 +585,168 @@ describe('EmploymentTerminationsService', () => {
       tx,
     );
   });
+
+  it('should approve a calculated employment termination', async () => {
+    const termination = {
+      ...buildTermination(TerminationStatus.CALCULATED),
+      calculatedBaseSalary: 3000000,
+      earnedTotal: 4650000,
+      calculatedAt: new Date(),
+    };
+
+    const approvedTermination = {
+      ...termination,
+      status: TerminationStatus.APPROVED,
+    };
+
+    prisma.employmentTermination.findFirst
+      .mockResolvedValueOnce(termination)
+      .mockResolvedValueOnce(approvedTermination);
+
+    const tx = {
+      employmentTermination: {
+        update: jest.fn().mockResolvedValue(approvedTermination),
+      },
+      auditLog: {
+        create: jest.fn(),
+      },
+    };
+
+    prisma.$transaction.mockImplementation(async (callback) => callback(tx));
+
+    const result = await service.approve(companyId, userId, termination.id);
+
+    expect(tx.employmentTermination.update).toHaveBeenCalledWith({
+      where: {
+        id: termination.id,
+      },
+      data: {
+        status: TerminationStatus.APPROVED,
+      },
+    });
+
+    expect(result).toEqual(approvedTermination);
+  });
+
+  it('should register approval in audit log using transaction client', async () => {
+    const termination = {
+      ...buildTermination(TerminationStatus.CALCULATED),
+      calculatedBaseSalary: 3000000,
+      earnedTotal: 4650000,
+      calculatedAt: new Date(),
+    };
+
+    prisma.employmentTermination.findFirst
+      .mockResolvedValueOnce(termination)
+      .mockResolvedValueOnce({
+        ...termination,
+        status: TerminationStatus.APPROVED,
+      });
+
+    const tx = {
+      employmentTermination: {
+        update: jest.fn().mockResolvedValue({
+          ...termination,
+          status: TerminationStatus.APPROVED,
+        }),
+      },
+      auditLog: {
+        create: jest.fn(),
+      },
+    };
+
+    prisma.$transaction.mockImplementation(async (callback) => callback(tx));
+
+    await service.approve(companyId, userId, termination.id);
+
+    expect(auditService.log).toHaveBeenCalledWith(
+      {
+        companyId,
+        userId,
+        action: 'APPROVE_EMPLOYMENT_TERMINATION',
+        entity: 'EmploymentTermination',
+        entityId: termination.id,
+        oldValue: {
+          status: TerminationStatus.CALCULATED,
+        },
+        newValue: {
+          status: TerminationStatus.APPROVED,
+        },
+      },
+      tx,
+    );
+  });
+
+  it('should reject approval of a draft termination', async () => {
+    prisma.employmentTermination.findFirst.mockResolvedValue(
+      buildTermination(TerminationStatus.DRAFT),
+    );
+
+    await expect(
+      service.approve(companyId, userId, 'termination-1'),
+    ).rejects.toThrow(BadRequestException);
+
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  it('should reject approval of an already approved termination', async () => {
+    prisma.employmentTermination.findFirst.mockResolvedValue(
+      buildTermination(TerminationStatus.APPROVED),
+    );
+
+    await expect(
+      service.approve(companyId, userId, 'termination-1'),
+    ).rejects.toThrow(BadRequestException);
+
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  it('should reject approval of a closed termination', async () => {
+    prisma.employmentTermination.findFirst.mockResolvedValue(
+      buildTermination(TerminationStatus.CLOSED),
+    );
+
+    await expect(
+      service.approve(companyId, userId, 'termination-1'),
+    ).rejects.toThrow(BadRequestException);
+
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  it('should reject approval when calculated snapshot is incomplete', async () => {
+    prisma.employmentTermination.findFirst.mockResolvedValue({
+      ...buildTermination(TerminationStatus.CALCULATED),
+      calculatedBaseSalary: 3000000,
+      earnedTotal: null,
+      calculatedAt: new Date(),
+    });
+
+    await expect(
+      service.approve(companyId, userId, 'termination-1'),
+    ).rejects.toThrow(BadRequestException);
+
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  it('should enforce company isolation when approving a termination', async () => {
+    prisma.employmentTermination.findFirst.mockResolvedValue(null);
+
+    await expect(
+      service.approve('company-2', userId, 'termination-1'),
+    ).rejects.toThrow(NotFoundException);
+
+    expect(prisma.employmentTermination.findFirst).toHaveBeenCalledWith({
+      where: {
+        id: 'termination-1',
+        companyId: 'company-2',
+      },
+      include: {
+        employee: true,
+        concepts: true,
+      },
+    });
+
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+    expect(auditService.log).not.toHaveBeenCalled();
+  });
 });

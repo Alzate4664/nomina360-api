@@ -231,6 +231,84 @@ export class EmploymentTerminationsService {
     });
   }
 
+  async approve(companyId: string, currentUserId: string, id: string) {
+    const termination = await this.prisma.employmentTermination.findFirst({
+      where: {
+        id,
+        companyId,
+      },
+      include: {
+        employee: true,
+        concepts: true,
+      },
+    });
+
+    if (!termination) {
+      throw new NotFoundException('Proceso de terminación no encontrado');
+    }
+
+    if (termination.status !== TerminationStatus.CALCULATED) {
+      throw new BadRequestException(
+        `La terminación en estado ${termination.status} no puede aprobarse`,
+      );
+    }
+
+    if (
+      termination.calculatedBaseSalary === null ||
+      termination.earnedTotal === null ||
+      termination.calculatedAt === null
+    ) {
+      throw new BadRequestException(
+        'La terminación no tiene un cálculo válido para aprobar',
+      );
+    }
+
+    const updatedTermination = await this.prisma.$transaction(async (tx) => {
+      const updated = await tx.employmentTermination.update({
+        where: {
+          id: termination.id,
+        },
+        data: {
+          status: TerminationStatus.APPROVED,
+        },
+      });
+
+      await this.auditService.log(
+        {
+          companyId,
+          userId: currentUserId,
+          action: 'APPROVE_EMPLOYMENT_TERMINATION',
+          entity: 'EmploymentTermination',
+          entityId: termination.id,
+          oldValue: {
+            status: termination.status,
+          },
+          newValue: {
+            status: TerminationStatus.APPROVED,
+          },
+        },
+        tx,
+      );
+
+      return updated;
+    });
+
+    return this.prisma.employmentTermination.findFirst({
+      where: {
+        id: updatedTermination.id,
+        companyId,
+      },
+      include: {
+        employee: true,
+        concepts: {
+          orderBy: {
+            createdAt: 'asc',
+          },
+        },
+      },
+    });
+  }
+
   async findAll(companyId: string, page = 1, limit = 20) {
     const safePage = Math.max(page, 1);
     const safeLimit = Math.min(Math.max(limit, 1), 100);
