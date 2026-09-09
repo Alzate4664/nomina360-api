@@ -148,16 +148,15 @@ export class EmploymentTerminationsService {
 
     const calculatedAt = new Date();
 
-    const updatedTermination = await this.prisma.$transaction(async (tx) => {
-      await tx.employmentTerminationConcept.deleteMany({
-        where: {
-          employmentTerminationId: termination.id,
-        },
-      });
-
-      const updated = await tx.employmentTermination.update({
+    const updatedTerminationId = await this.prisma.$transaction(async (tx) => {
+      const transition = await tx.employmentTermination.updateMany({
         where: {
           id: termination.id,
+          companyId,
+          version: termination.version,
+          status: {
+            in: allowedStatuses,
+          },
         },
         data: {
           unpaidSalaryStartDate,
@@ -169,6 +168,21 @@ export class EmploymentTerminationsService {
           earnedTotal: calculation.earnedTotal,
           calculatedAt,
           status: TerminationStatus.CALCULATED,
+          version: {
+            increment: 1,
+          },
+        },
+      });
+
+      if (transition.count !== 1) {
+        throw new BadRequestException(
+          'La terminación cambió mientras se calculaba. Vuelve a cargarla e intenta nuevamente',
+        );
+      }
+
+      await tx.employmentTerminationConcept.deleteMany({
+        where: {
+          employmentTerminationId: termination.id,
         },
       });
 
@@ -193,6 +207,7 @@ export class EmploymentTerminationsService {
           entityId: termination.id,
           oldValue: {
             status: termination.status,
+            version: termination.version,
             calculatedBaseSalary:
               termination.calculatedBaseSalary?.toString() ?? null,
             earnedTotal: termination.earnedTotal?.toString() ?? null,
@@ -200,6 +215,7 @@ export class EmploymentTerminationsService {
           },
           newValue: {
             status: TerminationStatus.CALCULATED,
+            version: termination.version + 1,
             calculatedBaseSalary: Number(termination.employee.baseSalary),
             salaryDays: calculation.salaryDays,
             severanceDays: calculation.severanceDays,
@@ -212,12 +228,12 @@ export class EmploymentTerminationsService {
         tx,
       );
 
-      return updated;
+      return termination.id;
     });
 
     return this.prisma.employmentTermination.findFirst({
       where: {
-        id: updatedTermination.id,
+        id: updatedTerminationId,
         companyId,
       },
       include: {
@@ -269,6 +285,7 @@ export class EmploymentTerminationsService {
           id: termination.id,
           companyId,
           status: TerminationStatus.CALCULATED,
+          version: termination.version,
         },
         data: {
           status: TerminationStatus.APPROVED,
@@ -290,9 +307,11 @@ export class EmploymentTerminationsService {
           entityId: termination.id,
           oldValue: {
             status: TerminationStatus.CALCULATED,
+            version: termination.version,
           },
           newValue: {
             status: TerminationStatus.APPROVED,
+            version: termination.version,
           },
         },
         tx,
@@ -389,10 +408,12 @@ export class EmploymentTerminationsService {
           entityId: termination.id,
           oldValue: {
             status: TerminationStatus.APPROVED,
+            version: termination.version,
             employeeStatus: EmployeeStatus.ACTIVE,
           },
           newValue: {
             status: TerminationStatus.CLOSED,
+            version: termination.version,
             employeeStatus: EmployeeStatus.INACTIVE,
           },
         },

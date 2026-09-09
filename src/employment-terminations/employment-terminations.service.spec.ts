@@ -131,6 +131,7 @@ describe('EmploymentTerminationsService', () => {
     terminationDate: new Date('2026-09-08T00:00:00.000Z'),
     reason: TerminationReason.RESIGNATION,
     status,
+    version: 0,
     notes: 'Retiro voluntario',
 
     unpaidSalaryStartDate: null,
@@ -376,10 +377,7 @@ describe('EmploymentTerminationsService', () => {
         }),
       },
       employmentTermination: {
-        update: jest.fn().mockResolvedValue({
-          ...termination,
-          status: TerminationStatus.CALCULATED,
-        }),
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
       },
       auditLog: {
         create: jest.fn(),
@@ -405,9 +403,14 @@ describe('EmploymentTerminationsService', () => {
       pendingVacationDays: 7.5,
     });
 
-    expect(tx.employmentTermination.update).toHaveBeenCalledWith({
+    expect(tx.employmentTermination.updateMany).toHaveBeenCalledWith({
       where: {
         id: termination.id,
+        companyId,
+        version: 0,
+        status: {
+          in: [TerminationStatus.DRAFT, TerminationStatus.CALCULATED],
+        },
       },
       data: expect.objectContaining({
         pendingVacationDays: 7.5,
@@ -417,6 +420,9 @@ describe('EmploymentTerminationsService', () => {
         serviceBonusDays: 68,
         earnedTotal: 4650000,
         status: TerminationStatus.CALCULATED,
+        version: {
+          increment: 1,
+        },
       }),
     });
 
@@ -450,7 +456,7 @@ describe('EmploymentTerminationsService', () => {
         }),
       },
       employmentTermination: {
-        update: jest.fn().mockResolvedValue(termination),
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
       },
       auditLog: {
         create: jest.fn(),
@@ -460,6 +466,23 @@ describe('EmploymentTerminationsService', () => {
     prisma.$transaction.mockImplementation(async (callback) => callback(tx));
 
     await service.calculate(companyId, userId, termination.id, calculateDto);
+
+    expect(tx.employmentTermination.updateMany).toHaveBeenCalledWith({
+      where: {
+        id: termination.id,
+        companyId,
+        version: 0,
+        status: {
+          in: [TerminationStatus.DRAFT, TerminationStatus.CALCULATED],
+        },
+      },
+      data: expect.objectContaining({
+        status: TerminationStatus.CALCULATED,
+        version: {
+          increment: 1,
+        },
+      }),
+    });
 
     expect(tx.employmentTerminationConcept.deleteMany).toHaveBeenCalledWith({
       where: {
@@ -563,7 +586,7 @@ describe('EmploymentTerminationsService', () => {
         }),
       },
       employmentTermination: {
-        update: jest.fn().mockResolvedValue(termination),
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
       },
 
       employee: {
@@ -592,6 +615,59 @@ describe('EmploymentTerminationsService', () => {
       }),
       tx,
     );
+  });
+
+  it('should reject calculation when termination version changes concurrently', async () => {
+    const termination = {
+      ...buildTermination(TerminationStatus.CALCULATED),
+      version: 3,
+    };
+
+    prisma.employmentTermination.findFirst.mockResolvedValueOnce(termination);
+
+    terminationPayrollCalculator.calculate.mockReturnValue(calculation);
+
+    const tx = {
+      employmentTermination: {
+        updateMany: jest.fn().mockResolvedValue({ count: 0 }),
+      },
+      employmentTerminationConcept: {
+        deleteMany: jest.fn(),
+        createMany: jest.fn(),
+      },
+      auditLog: {
+        create: jest.fn(),
+      },
+    };
+
+    prisma.$transaction.mockImplementation(async (callback) => callback(tx));
+
+    await expect(
+      service.calculate(companyId, userId, termination.id, calculateDto),
+    ).rejects.toThrow(BadRequestException);
+
+    expect(tx.employmentTermination.updateMany).toHaveBeenCalledWith({
+      where: {
+        id: termination.id,
+        companyId,
+        version: 3,
+        status: {
+          in: [TerminationStatus.DRAFT, TerminationStatus.CALCULATED],
+        },
+      },
+      data: expect.objectContaining({
+        status: TerminationStatus.CALCULATED,
+        version: {
+          increment: 1,
+        },
+      }),
+    });
+
+    expect(tx.employmentTerminationConcept.deleteMany).not.toHaveBeenCalled();
+
+    expect(tx.employmentTerminationConcept.createMany).not.toHaveBeenCalled();
+
+    expect(auditService.log).not.toHaveBeenCalled();
   });
 
   it('should approve a calculated employment termination', async () => {
@@ -629,6 +705,7 @@ describe('EmploymentTerminationsService', () => {
         id: termination.id,
         companyId,
         status: TerminationStatus.CALCULATED,
+        version: termination.version,
       },
       data: {
         status: TerminationStatus.APPROVED,
@@ -758,9 +835,11 @@ describe('EmploymentTerminationsService', () => {
         entityId: termination.id,
         oldValue: {
           status: TerminationStatus.CALCULATED,
+          version: termination.version,
         },
         newValue: {
           status: TerminationStatus.APPROVED,
+          version: termination.version,
         },
       },
       tx,
@@ -797,6 +876,7 @@ describe('EmploymentTerminationsService', () => {
         id: termination.id,
         companyId,
         status: TerminationStatus.CALCULATED,
+        version: termination.version,
       },
       data: {
         status: TerminationStatus.APPROVED,
@@ -828,6 +908,47 @@ describe('EmploymentTerminationsService', () => {
     ).rejects.toThrow(BadRequestException);
 
     expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  it('should reject approval when calculated version changes concurrently', async () => {
+    const termination = {
+      ...buildTermination(TerminationStatus.CALCULATED),
+      version: 4,
+      calculatedBaseSalary: 3000000,
+      earnedTotal: 4650000,
+      calculatedAt: new Date(),
+    };
+
+    prisma.employmentTermination.findFirst.mockResolvedValueOnce(termination);
+
+    const tx = {
+      employmentTermination: {
+        updateMany: jest.fn().mockResolvedValue({ count: 0 }),
+      },
+      auditLog: {
+        create: jest.fn(),
+      },
+    };
+
+    prisma.$transaction.mockImplementation(async (callback) => callback(tx));
+
+    await expect(
+      service.approve(companyId, userId, termination.id),
+    ).rejects.toThrow(BadRequestException);
+
+    expect(tx.employmentTermination.updateMany).toHaveBeenCalledWith({
+      where: {
+        id: termination.id,
+        companyId,
+        status: TerminationStatus.CALCULATED,
+        version: 4,
+      },
+      data: {
+        status: TerminationStatus.APPROVED,
+      },
+    });
+
+    expect(auditService.log).not.toHaveBeenCalled();
   });
 
   it('should reject approval of a closed termination', async () => {
