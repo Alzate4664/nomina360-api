@@ -11,13 +11,7 @@ export class AccruedDaysCalculator {
     const periodStart = new Date(Date.UTC(year, startMonth - 1, 1));
     const periodEnd = new Date(Date.UTC(year, month, 0));
 
-    const employeeStart = new Date(
-      Date.UTC(
-        startDate.getUTCFullYear(),
-        startDate.getUTCMonth(),
-        startDate.getUTCDate(),
-      ),
-    );
+    const employeeStart = this.normalizeDate(startDate);
 
     if (employeeStart > periodEnd) {
       return 0;
@@ -26,20 +20,55 @@ export class AccruedDaysCalculator {
     const accrualStart =
       employeeStart > periodStart ? employeeStart : periodStart;
 
-    return this.calculate360Days(accrualStart, periodEnd);
+    return this.calculate360Days(accrualStart, periodEnd, true);
   }
 
-  private calculate360Days(startDate: Date, endDate: Date): number {
+  calculateUntilDate(
+    startDate: Date,
+    endDate: Date,
+    periodStartDate?: Date,
+  ): number {
+    const employeeStart = this.normalizeDate(startDate);
+    const accrualEnd = this.normalizeDate(endDate);
+
+    if (employeeStart > accrualEnd) {
+      return 0;
+    }
+
+    const requestedPeriodStart = periodStartDate
+      ? this.normalizeDate(periodStartDate)
+      : employeeStart;
+
+    const accrualStart =
+      employeeStart > requestedPeriodStart
+        ? employeeStart
+        : requestedPeriodStart;
+
+    if (accrualStart > accrualEnd) {
+      return 0;
+    }
+
+    return this.calculate360Days(accrualStart, accrualEnd, false);
+  }
+
+  private normalizeDate(date: Date): Date {
+    return new Date(
+      Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()),
+    );
+  }
+
+  private calculate360Days(
+    startDate: Date,
+    endDate: Date,
+    forceMonthEnd: boolean,
+  ): number {
     const startYear = startDate.getUTCFullYear();
     const startMonth = startDate.getUTCMonth() + 1;
     const startDay = Math.min(startDate.getUTCDate(), 30);
 
     const endYear = endDate.getUTCFullYear();
     const endMonth = endDate.getUTCMonth() + 1;
-
-    // Los períodos de nómina terminan al cierre del mes,
-    // que en la convención laboral 30/360 equivale al día 30.
-    const endDay = 30;
+    const endDay = forceMonthEnd ? 30 : Math.min(endDate.getUTCDate(), 30);
 
     return (
       (endYear - startYear) * 360 +

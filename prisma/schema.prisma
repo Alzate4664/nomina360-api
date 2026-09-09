@@ -78,6 +78,9 @@ model EmploymentTermination {
   status          TerminationStatus @default(DRAFT)
   notes           String?
 
+  unpaidSalaryStartDate DateTime?
+  pendingVacationDays   Decimal?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 

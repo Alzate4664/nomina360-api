@@ -28,6 +28,8 @@ import { SeverancePayrollCalculator } from './calculator/severance-payroll.calcu
 import { SeveranceCalculator } from './calculator/concepts/severance.calculator';
 import { ServiceBonusCalculator } from './calculator/concepts/service-bonus.calculator';
 import { ServiceBonusPayrollCalculator } from './calculator/service-bonus-payroll.calculator';
+import { TerminationVacationCalculator } from './calculator/concepts/termination-vacation.calculator';
+import { TerminationPayrollCalculator } from './calculator/termination-payroll.calculator';
 
 @Module({
   imports: [
@@ -60,6 +62,8 @@ import { ServiceBonusPayrollCalculator } from './calculator/service-bonus-payrol
     SeverancePayrollCalculator,
     ServiceBonusCalculator,
     ServiceBonusPayrollCalculator,
+    TerminationVacationCalculator,
+    TerminationPayrollCalculator,
     CreatePayrollPeriodUseCase,
     FindPayrollPeriodsUseCase,
     FindPayrollPeriodUseCase,
@@ -68,5 +72,7 @@ import { ServiceBonusPayrollCalculator } from './calculator/service-bonus-payrol
     ClosePayrollPeriodUseCase,
     ReopenPayrollPeriodUseCase,
   ],
+
+  exports: [TerminationPayrollCalculator],
 })
 export class PayrollModule {}

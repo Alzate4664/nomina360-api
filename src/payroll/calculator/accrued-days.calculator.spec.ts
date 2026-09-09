@@ -68,4 +68,51 @@ describe('AccruedDaysCalculator', () => {
 
     expect(result).toBe(1);
   });
+
+  it('should calculate accrued days until an exact termination date', () => {
+    const result = calculator.calculateUntilDate(
+      new Date('2026-01-01T00:00:00.000Z'),
+      new Date('2026-09-08T00:00:00.000Z'),
+    );
+
+    expect(result).toBe(248);
+  });
+
+  it('should calculate accrued days from a custom period start', () => {
+    const result = calculator.calculateUntilDate(
+      new Date('2026-01-01T00:00:00.000Z'),
+      new Date('2026-09-08T00:00:00.000Z'),
+      new Date('2026-07-01T00:00:00.000Z'),
+    );
+
+    expect(result).toBe(68);
+  });
+
+  it('should use employee start date when it is after the custom period start', () => {
+    const result = calculator.calculateUntilDate(
+      new Date('2026-07-15T00:00:00.000Z'),
+      new Date('2026-09-08T00:00:00.000Z'),
+      new Date('2026-07-01T00:00:00.000Z'),
+    );
+
+    expect(result).toBe(54);
+  });
+
+  it('should return zero when the employee starts after the end date', () => {
+    const result = calculator.calculateUntilDate(
+      new Date('2026-10-01T00:00:00.000Z'),
+      new Date('2026-09-08T00:00:00.000Z'),
+    );
+
+    expect(result).toBe(0);
+  });
+
+  it('should include the exact termination day', () => {
+    const result = calculator.calculateUntilDate(
+      new Date('2026-09-08T00:00:00.000Z'),
+      new Date('2026-09-08T00:00:00.000Z'),
+    );
+
+    expect(result).toBe(1);
+  });
 });
