@@ -263,15 +263,23 @@ export class EmploymentTerminationsService {
       );
     }
 
-    const updatedTermination = await this.prisma.$transaction(async (tx) => {
-      const updated = await tx.employmentTermination.update({
+    const updatedTerminationId = await this.prisma.$transaction(async (tx) => {
+      const transition = await tx.employmentTermination.updateMany({
         where: {
           id: termination.id,
+          companyId,
+          status: TerminationStatus.CALCULATED,
         },
         data: {
           status: TerminationStatus.APPROVED,
         },
       });
+
+      if (transition.count !== 1) {
+        throw new BadRequestException(
+          'La terminación cambió de estado y ya no puede aprobarse',
+        );
+      }
 
       await this.auditService.log(
         {
@@ -281,7 +289,7 @@ export class EmploymentTerminationsService {
           entity: 'EmploymentTermination',
           entityId: termination.id,
           oldValue: {
-            status: termination.status,
+            status: TerminationStatus.CALCULATED,
           },
           newValue: {
             status: TerminationStatus.APPROVED,
@@ -290,12 +298,12 @@ export class EmploymentTerminationsService {
         tx,
       );
 
-      return updated;
+      return termination.id;
     });
 
     return this.prisma.employmentTermination.findFirst({
       where: {
-        id: updatedTermination.id,
+        id: updatedTerminationId,
         companyId,
       },
       include: {
@@ -337,24 +345,40 @@ export class EmploymentTerminationsService {
       );
     }
 
-    const updatedTermination = await this.prisma.$transaction(async (tx) => {
-      const updated = await tx.employmentTermination.update({
+    const updatedTerminationId = await this.prisma.$transaction(async (tx) => {
+      const terminationTransition = await tx.employmentTermination.updateMany({
         where: {
           id: termination.id,
+          companyId,
+          status: TerminationStatus.APPROVED,
         },
         data: {
           status: TerminationStatus.CLOSED,
         },
       });
 
-      await tx.employee.update({
+      if (terminationTransition.count !== 1) {
+        throw new BadRequestException(
+          'La terminación cambió de estado y ya no puede cerrarse',
+        );
+      }
+
+      const employeeTransition = await tx.employee.updateMany({
         where: {
           id: termination.employeeId,
+          companyId,
+          status: EmployeeStatus.ACTIVE,
         },
         data: {
           status: EmployeeStatus.INACTIVE,
         },
       });
+
+      if (employeeTransition.count !== 1) {
+        throw new BadRequestException(
+          'El colaborador cambió de estado y la terminación no puede cerrarse',
+        );
+      }
 
       await this.auditService.log(
         {
@@ -364,8 +388,8 @@ export class EmploymentTerminationsService {
           entity: 'EmploymentTermination',
           entityId: termination.id,
           oldValue: {
-            status: termination.status,
-            employeeStatus: termination.employee.status,
+            status: TerminationStatus.APPROVED,
+            employeeStatus: EmployeeStatus.ACTIVE,
           },
           newValue: {
             status: TerminationStatus.CLOSED,
@@ -375,12 +399,12 @@ export class EmploymentTerminationsService {
         tx,
       );
 
-      return updated;
+      return termination.id;
     });
 
     return this.prisma.employmentTermination.findFirst({
       where: {
-        id: updatedTermination.id,
+        id: updatedTerminationId,
         companyId,
       },
       include: {

@@ -613,7 +613,7 @@ describe('EmploymentTerminationsService', () => {
 
     const tx = {
       employmentTermination: {
-        update: jest.fn().mockResolvedValue(approvedTermination),
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
       },
       auditLog: {
         create: jest.fn(),
@@ -624,9 +624,11 @@ describe('EmploymentTerminationsService', () => {
 
     const result = await service.approve(companyId, userId, termination.id);
 
-    expect(tx.employmentTermination.update).toHaveBeenCalledWith({
+    expect(tx.employmentTermination.updateMany).toHaveBeenCalledWith({
       where: {
         id: termination.id,
+        companyId,
+        status: TerminationStatus.CALCULATED,
       },
       data: {
         status: TerminationStatus.APPROVED,
@@ -664,16 +666,10 @@ describe('EmploymentTerminationsService', () => {
 
     const closeTx = {
       employmentTermination: {
-        update: jest.fn().mockResolvedValue({
-          ...termination,
-          status: TerminationStatus.CLOSED,
-        }),
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
       },
       employee: {
-        update: jest.fn().mockResolvedValue({
-          ...termination.employee,
-          status: EmployeeStatus.INACTIVE,
-        }),
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
       },
       auditLog: {
         create: jest.fn().mockResolvedValue({}),
@@ -700,18 +696,22 @@ describe('EmploymentTerminationsService', () => {
       }),
     );
 
-    expect(closeTx.employmentTermination.update).toHaveBeenCalledWith({
+    expect(closeTx.employmentTermination.updateMany).toHaveBeenCalledWith({
       where: {
         id: 'termination-1',
+        companyId,
+        status: TerminationStatus.APPROVED,
       },
       data: {
         status: TerminationStatus.CLOSED,
       },
     });
 
-    expect(closeTx.employee.update).toHaveBeenCalledWith({
+    expect(closeTx.employee.updateMany).toHaveBeenCalledWith({
       where: {
         id: 'employee-1',
+        companyId,
+        status: EmployeeStatus.ACTIVE,
       },
       data: {
         status: EmployeeStatus.INACTIVE,
@@ -738,10 +738,7 @@ describe('EmploymentTerminationsService', () => {
 
     const tx = {
       employmentTermination: {
-        update: jest.fn().mockResolvedValue({
-          ...termination,
-          status: TerminationStatus.APPROVED,
-        }),
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
       },
       auditLog: {
         create: jest.fn(),
@@ -768,6 +765,45 @@ describe('EmploymentTerminationsService', () => {
       },
       tx,
     );
+  });
+
+  it('should reject approval when termination status changes concurrently', async () => {
+    const termination = {
+      ...buildTermination(TerminationStatus.CALCULATED),
+      calculatedBaseSalary: 3000000,
+      earnedTotal: 4650000,
+      calculatedAt: new Date(),
+    };
+
+    prisma.employmentTermination.findFirst.mockResolvedValueOnce(termination);
+
+    const tx = {
+      employmentTermination: {
+        updateMany: jest.fn().mockResolvedValue({ count: 0 }),
+      },
+      auditLog: {
+        create: jest.fn(),
+      },
+    };
+
+    prisma.$transaction.mockImplementation(async (callback) => callback(tx));
+
+    await expect(
+      service.approve(companyId, userId, termination.id),
+    ).rejects.toThrow(BadRequestException);
+
+    expect(tx.employmentTermination.updateMany).toHaveBeenCalledWith({
+      where: {
+        id: termination.id,
+        companyId,
+        status: TerminationStatus.CALCULATED,
+      },
+      data: {
+        status: TerminationStatus.APPROVED,
+      },
+    });
+
+    expect(auditService.log).not.toHaveBeenCalled();
   });
 
   it('should reject approval of a draft termination', async () => {
@@ -956,16 +992,10 @@ describe('EmploymentTerminationsService', () => {
 
     const closeTx = {
       employmentTermination: {
-        update: jest.fn().mockResolvedValue({
-          ...termination,
-          status: TerminationStatus.CLOSED,
-        }),
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
       },
       employee: {
-        update: jest.fn().mockResolvedValue({
-          ...termination.employee,
-          status: EmployeeStatus.INACTIVE,
-        }),
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
       },
       auditLog: {
         create: jest.fn().mockResolvedValue({}),
@@ -1000,5 +1030,103 @@ describe('EmploymentTerminationsService', () => {
       }),
       closeTx,
     );
+  });
+
+  it('should reject closing when termination status changes concurrently', async () => {
+    const termination = {
+      ...buildTermination(TerminationStatus.APPROVED),
+      employee: {
+        ...buildTermination(TerminationStatus.APPROVED).employee,
+        status: EmployeeStatus.ACTIVE,
+      },
+    };
+
+    prisma.employmentTermination.findFirst.mockResolvedValueOnce(termination);
+
+    const tx = {
+      employmentTermination: {
+        updateMany: jest.fn().mockResolvedValue({ count: 0 }),
+      },
+      employee: {
+        updateMany: jest.fn(),
+      },
+      auditLog: {
+        create: jest.fn(),
+      },
+    };
+
+    prisma.$transaction.mockImplementation(async (callback) => callback(tx));
+
+    await expect(
+      service.close(companyId, userId, termination.id),
+    ).rejects.toThrow(BadRequestException);
+
+    expect(tx.employmentTermination.updateMany).toHaveBeenCalledWith({
+      where: {
+        id: termination.id,
+        companyId,
+        status: TerminationStatus.APPROVED,
+      },
+      data: {
+        status: TerminationStatus.CLOSED,
+      },
+    });
+
+    expect(tx.employee.updateMany).not.toHaveBeenCalled();
+    expect(auditService.log).not.toHaveBeenCalled();
+  });
+
+  it('should reject closing when employee status changes concurrently', async () => {
+    const termination = {
+      ...buildTermination(TerminationStatus.APPROVED),
+      employee: {
+        ...buildTermination(TerminationStatus.APPROVED).employee,
+        status: EmployeeStatus.ACTIVE,
+      },
+    };
+
+    prisma.employmentTermination.findFirst.mockResolvedValueOnce(termination);
+
+    const tx = {
+      employmentTermination: {
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+      },
+      employee: {
+        updateMany: jest.fn().mockResolvedValue({ count: 0 }),
+      },
+      auditLog: {
+        create: jest.fn(),
+      },
+    };
+
+    prisma.$transaction.mockImplementation(async (callback) => callback(tx));
+
+    await expect(
+      service.close(companyId, userId, termination.id),
+    ).rejects.toThrow(BadRequestException);
+
+    expect(tx.employmentTermination.updateMany).toHaveBeenCalledWith({
+      where: {
+        id: termination.id,
+        companyId,
+        status: TerminationStatus.APPROVED,
+      },
+      data: {
+        status: TerminationStatus.CLOSED,
+      },
+    });
+
+    expect(tx.employee.updateMany).toHaveBeenCalledWith({
+      where: {
+        id: termination.employeeId,
+        companyId,
+        status: EmployeeStatus.ACTIVE,
+      },
+      data: {
+        status: EmployeeStatus.INACTIVE,
+      },
+    });
+
+    expect(auditService.log).not.toHaveBeenCalled();
   });
 });
