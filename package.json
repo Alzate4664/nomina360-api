@@ -91,6 +91,7 @@
     "testEnvironment": "node"
   },
   "overrides": {
-    "multer": "2.3.0"
+    "multer": "2.3.0",
+    "mysql2": "3.24.4"
   }
 }
