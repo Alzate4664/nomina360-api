@@ -44,10 +44,16 @@ export class CalculatePayrollUseCase {
     month: number,
     payrollType: PayrollType,
   ) {
-
     // ─── PHASE 1: reads, guards, and in-memory calculations ────────────────────
     // Reads and calculations stay outside the transaction.
     // The only intentional write in this phase is creating a missing DRAFT period.
+
+    const allowedStatuses: PayrollStatus[] = [
+      PayrollStatus.DRAFT,
+      PayrollStatus.COLLECTING_NOVELTIES,
+      PayrollStatus.CALCULATED,
+      PayrollStatus.REOPENED,
+    ];
 
     const existingPeriod = await this.prisma.payrollPeriod.findFirst({
       where: {
@@ -59,13 +65,6 @@ export class CalculatePayrollUseCase {
     });
 
     if (existingPeriod) {
-      const allowedStatuses: PayrollStatus[] = [
-        PayrollStatus.DRAFT,
-        PayrollStatus.COLLECTING_NOVELTIES,
-        PayrollStatus.CALCULATED,
-        PayrollStatus.REOPENED,
-      ];
-
       if (!allowedStatuses.includes(existingPeriod.status)) {
         throw new BadRequestException(
           `El período en estado ${existingPeriod.status} no puede calcularse ni recalcularse`,
@@ -132,7 +131,12 @@ export class CalculatePayrollUseCase {
             earnedTotal: number;
             deductionsTotal: number;
             netPay: number;
-            concepts: Array<{ code: string; name: string; type: ConceptType; amount: number }>;
+            concepts: Array<{
+              code: string;
+              name: string;
+              type: ConceptType;
+              amount: number;
+            }>;
           }
         | undefined;
 
@@ -198,7 +202,30 @@ export class CalculatePayrollUseCase {
     //   - the AuditLog record is NOT written.
 
     await this.prisma.$transaction(async (tx) => {
-      // a) Delete previous items and concepts atomically with new inserts.
+      // a) Claim the period using optimistic concurrency control.
+      const transition = await tx.payrollPeriod.updateMany({
+        where: {
+          id: period!.id,
+          companyId,
+          version: period!.version,
+          status: {
+            in: allowedStatuses,
+          },
+        },
+        data: {
+          status: PayrollStatus.CALCULATED,
+          version: {
+            increment: 1,
+          },
+        },
+      });
+
+      if (transition.count !== 1) {
+        throw new BadRequestException(
+          'El período de nómina cambió mientras se calculaba. Vuelve a cargarlo e intenta nuevamente',
+        );
+      }
+      // b) Delete previous items and concepts atomically with new inserts.
       if (existingItemIds.length > 0) {
         await tx.payrollConceptDetail.deleteMany({
           where: {
@@ -217,7 +244,7 @@ export class CalculatePayrollUseCase {
         });
       }
 
-      // b) Insert new items and concepts.
+      // c) Insert new items and concepts.
       for (const result of results) {
         const payrollItem = await tx.payrollItem.create({
           data: {
@@ -235,8 +262,8 @@ export class CalculatePayrollUseCase {
           await tx.payrollConceptDetail.create({
             data: {
               payrollItemId: payrollItem.id,
-              conceptCode: concept.code,   // map: calculator code → DB conceptCode
-              conceptName: concept.name,   // map: calculator name → DB conceptName
+              conceptCode: concept.code, // map: calculator code → DB conceptCode
+              conceptName: concept.name, // map: calculator name → DB conceptName
               type: concept.type,
               amount: concept.amount,
             },
@@ -244,17 +271,7 @@ export class CalculatePayrollUseCase {
         }
       }
 
-      // c) Promote period status inside the same transaction.
-      const updatedPeriod = await tx.payrollPeriod.update({
-        where: {
-          id: period!.id,
-        },
-        data: {
-          status: PayrollStatus.CALCULATED,
-        },
-      });
-
-      // d) Write the audit record inside the transaction so it rolls back
+      // d) Write the audit record inside the transaction
       //    together with the financial writes if anything above fails.
       await this.auditService.log(
         {
@@ -262,11 +279,12 @@ export class CalculatePayrollUseCase {
           userId: currentUserId,
           action: 'CALCULATE_PAYROLL',
           entity: 'PayrollPeriod',
-          entityId: updatedPeriod.id,
+          entityId: period!.id,
           newValue: {
             year,
             month,
-            status: updatedPeriod.status,
+            status: PayrollStatus.CALCULATED,
+            version: period!.version + 1,
           },
         },
         tx,

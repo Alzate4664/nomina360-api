@@ -19,6 +19,7 @@ describe('Nomina360 API (e2e)', () => {
   let employmentTerminationId: string | undefined;
   let rollbackFirstPeriodId: string | undefined;
   let rollbackRecalculationPeriodId: string | undefined;
+  let lifecyclePayrollPeriodId: string | undefined;
 
   const uniqueSuffix = `${Date.now()}-${Math.floor(Math.random() * 10000)}`;
 
@@ -36,6 +37,9 @@ describe('Nomina360 API (e2e)', () => {
   const rollbackFirstMonth = 10;
   const rollbackRecalculationMonth = 11;
   const rollbackPayrollType = 'EXTRAORDINARY' as const;
+  const lifecyclePayrollYear = 2099;
+  const lifecyclePayrollMonth = 9;
+  const lifecyclePayrollType = 'EXTRAORDINARY' as const;
 
   const getPayrollSnapshot = async (periodId: string) => {
   const period = await prisma.payrollPeriod.findUniqueOrThrow({
@@ -44,6 +48,11 @@ describe('Nomina360 API (e2e)', () => {
     },
     select: {
       status: true,
+      version: true,
+      approvedAt: true,
+      approvedById: true,
+      closedAt: true,
+      closedById: true,
     },
   });
 
@@ -90,6 +99,11 @@ describe('Nomina360 API (e2e)', () => {
 
   return {
     status: period.status,
+    version: period.version,
+    approvedAt: period.approvedAt,
+    approvedById: period.approvedById,
+    closedAt: period.closedAt,
+    closedById: period.closedById,
     items: items.map((item) => ({
       ...item,
       baseSalary: item.baseSalary.toString(),
@@ -146,6 +160,7 @@ describe('Nomina360 API (e2e)', () => {
       const rollbackPeriodIds = [
   rollbackFirstPeriodId,
   rollbackRecalculationPeriodId,
+  lifecyclePayrollPeriodId,
 ].filter((id): id is string => Boolean(id));
 
 if (rollbackPeriodIds.length > 0) {
@@ -736,6 +751,188 @@ it('POST /payroll/calculate debe restaurar la liquidación anterior si falla una
 
   expect(auditCountAfter).toBe(auditCountBefore);
 });
+
+  it('debe proteger el lifecycle de nómina con versionado, concurrencia y rollback atómico', async () => {
+    const createResponse = await request(app.getHttpServer())
+      .post('/payroll/periods')
+      .set('Authorization', `Bearer ${ownerToken}`)
+      .send({
+        name: `Lifecycle E2E ${uniqueSuffix}`,
+        payrollType: lifecyclePayrollType,
+        year: lifecyclePayrollYear,
+        month: lifecyclePayrollMonth,
+      })
+      .expect(201);
+
+    lifecyclePayrollPeriodId = createResponse.body.id;
+
+    const draftPeriod = await prisma.payrollPeriod.findUniqueOrThrow({
+      where: {
+        id: lifecyclePayrollPeriodId,
+      },
+    });
+
+    expect(draftPeriod.status).toBe('DRAFT');
+    expect(draftPeriod.version).toBe(0);
+
+    await request(app.getHttpServer())
+      .post('/payroll/calculate')
+      .set('Authorization', `Bearer ${ownerToken}`)
+      .send({
+        year: lifecyclePayrollYear,
+        month: lifecyclePayrollMonth,
+        payrollType: lifecyclePayrollType,
+      })
+      .expect(201);
+
+    const calculatedPeriod = await prisma.payrollPeriod.findUniqueOrThrow({
+      where: {
+        id: lifecyclePayrollPeriodId,
+      },
+    });
+
+    expect(calculatedPeriod.status).toBe('CALCULATED');
+    expect(calculatedPeriod.version).toBe(1);
+
+    const approveAuditCountBefore = await prisma.auditLog.count({
+      where: {
+        entity: 'PayrollPeriod',
+        entityId: lifecyclePayrollPeriodId,
+        action: 'APPROVE_PAYROLL',
+      },
+    });
+
+    const approveRequests = await Promise.all([
+      request(app.getHttpServer())
+        .post(`/payroll/${lifecyclePayrollPeriodId}/approve`)
+        .set('Authorization', `Bearer ${ownerToken}`),
+
+      request(app.getHttpServer())
+        .post(`/payroll/${lifecyclePayrollPeriodId}/approve`)
+        .set('Authorization', `Bearer ${ownerToken}`),
+    ]);
+
+    const approveStatuses = approveRequests
+      .map((response) => response.status)
+      .sort((a, b) => a - b);
+
+    expect(approveStatuses).toEqual([201, 400]);
+
+    const approvedPeriod = await prisma.payrollPeriod.findUniqueOrThrow({
+      where: {
+        id: lifecyclePayrollPeriodId,
+      },
+    });
+
+    expect(approvedPeriod.status).toBe('APPROVED');
+    expect(approvedPeriod.version).toBe(2);
+    expect(approvedPeriod.approvedAt).not.toBeNull();
+    expect(approvedPeriod.approvedById).not.toBeNull();
+
+    const approveAuditCountAfter = await prisma.auditLog.count({
+      where: {
+        entity: 'PayrollPeriod',
+        entityId: lifecyclePayrollPeriodId,
+        action: 'APPROVE_PAYROLL',
+      },
+    });
+
+    expect(approveAuditCountAfter).toBe(approveAuditCountBefore + 1);
+
+    const closeAuditCountBefore = await prisma.auditLog.count({
+      where: {
+        entity: 'PayrollPeriod',
+        entityId: lifecyclePayrollPeriodId,
+        action: 'CLOSE_PAYROLL',
+      },
+    });
+
+    const auditSpy = jest
+      .spyOn(auditService, 'log')
+      .mockRejectedValueOnce(new Error('E2E forced close audit failure'));
+
+    try {
+      await request(app.getHttpServer())
+        .post(`/payroll/${lifecyclePayrollPeriodId}/close`)
+        .set('Authorization', `Bearer ${ownerToken}`)
+        .expect(500);
+    } finally {
+      auditSpy.mockRestore();
+    }
+
+    const afterFailedClose = await prisma.payrollPeriod.findUniqueOrThrow({
+      where: {
+        id: lifecyclePayrollPeriodId,
+      },
+    });
+
+    expect(afterFailedClose.status).toBe('APPROVED');
+    expect(afterFailedClose.version).toBe(2);
+    expect(afterFailedClose.closedAt).toBeNull();
+    expect(afterFailedClose.closedById).toBeNull();
+
+    const closeAuditCountAfterFailure = await prisma.auditLog.count({
+      where: {
+        entity: 'PayrollPeriod',
+        entityId: lifecyclePayrollPeriodId,
+        action: 'CLOSE_PAYROLL',
+      },
+    });
+
+    expect(closeAuditCountAfterFailure).toBe(closeAuditCountBefore);
+
+    await request(app.getHttpServer())
+      .post(`/payroll/${lifecyclePayrollPeriodId}/close`)
+      .set('Authorization', `Bearer ${ownerToken}`)
+      .expect(201);
+
+    const closedPeriod = await prisma.payrollPeriod.findUniqueOrThrow({
+      where: {
+        id: lifecyclePayrollPeriodId,
+      },
+    });
+
+    expect(closedPeriod.status).toBe('CLOSED');
+    expect(closedPeriod.version).toBe(3);
+    expect(closedPeriod.closedAt).not.toBeNull();
+    expect(closedPeriod.closedById).not.toBeNull();
+
+    const closeAuditCountAfterSuccess = await prisma.auditLog.count({
+      where: {
+        entity: 'PayrollPeriod',
+        entityId: lifecyclePayrollPeriodId,
+        action: 'CLOSE_PAYROLL',
+      },
+    });
+
+    expect(closeAuditCountAfterSuccess).toBe(closeAuditCountBefore + 1);
+
+    await request(app.getHttpServer())
+      .post(`/payroll/${lifecyclePayrollPeriodId}/reopen`)
+      .set('Authorization', `Bearer ${ownerToken}`)
+      .expect(201);
+
+    const reopenedPeriod = await prisma.payrollPeriod.findUniqueOrThrow({
+      where: {
+        id: lifecyclePayrollPeriodId,
+      },
+    });
+
+    expect(reopenedPeriod.status).toBe('REOPENED');
+    expect(reopenedPeriod.version).toBe(4);
+    expect(reopenedPeriod.closedAt).toBeNull();
+    expect(reopenedPeriod.closedById).toBeNull();
+
+    const reopenAuditCount = await prisma.auditLog.count({
+      where: {
+        entity: 'PayrollPeriod',
+        entityId: lifecyclePayrollPeriodId,
+        action: 'REOPEN_PAYROLL',
+      },
+    });
+
+    expect(reopenAuditCount).toBe(1);
+  });
 
   it('DELETE /employees/:id debe desactivar el colaborador', async () => {
     const response = await request(app.getHttpServer())

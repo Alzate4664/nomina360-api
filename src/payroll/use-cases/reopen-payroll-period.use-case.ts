@@ -36,35 +36,65 @@ export class ReopenPayrollPeriodUseCase {
       );
     }
 
-    const reopenedPayrollPeriod = await this.prisma.payrollPeriod.update({
-      where: {
-        id: payrollPeriod.id,
-      },
-      data: {
-        status: PayrollStatus.REOPENED,
-        closedAt: null,
-        closedById: null,
-      },
-    });
+    return this.prisma.$transaction(async (tx) => {
+      const transition = await tx.payrollPeriod.updateMany({
+        where: {
+          id: payrollPeriod.id,
+          companyId,
+          status: PayrollStatus.CLOSED,
+          version: payrollPeriod.version,
+        },
+        data: {
+          status: PayrollStatus.REOPENED,
+          closedAt: null,
+          closedById: null,
+          version: {
+            increment: 1,
+          },
+        },
+      });
 
-    await this.auditService.log({
-      companyId,
-      userId: currentUserId,
-      action: 'REOPEN_PAYROLL',
-      entity: 'PayrollPeriod',
-      entityId: payrollPeriod.id,
-      oldValue: {
-        status: payrollPeriod.status,
-        closedAt: payrollPeriod.closedAt,
-        closedById: payrollPeriod.closedById,
-      },
-      newValue: {
-        status: reopenedPayrollPeriod.status,
-        closedAt: reopenedPayrollPeriod.closedAt,
-        closedById: reopenedPayrollPeriod.closedById,
-      },
-    });
+      if (transition.count !== 1) {
+        throw new BadRequestException(
+          'El período de nómina cambió mientras se reabría. Vuelve a cargarlo e intenta nuevamente',
+        );
+      }
 
-    return reopenedPayrollPeriod;
+      const reopenedPayrollPeriod = await tx.payrollPeriod.findFirst({
+        where: {
+          id: payrollPeriod.id,
+          companyId,
+        },
+      });
+
+      if (!reopenedPayrollPeriod) {
+        throw new NotFoundException('Período de nómina no encontrado.');
+      }
+
+      await this.auditService.log(
+        {
+          companyId,
+          userId: currentUserId,
+          action: 'REOPEN_PAYROLL',
+          entity: 'PayrollPeriod',
+          entityId: payrollPeriod.id,
+          oldValue: {
+            status: payrollPeriod.status,
+            version: payrollPeriod.version,
+            closedAt: payrollPeriod.closedAt,
+            closedById: payrollPeriod.closedById,
+          },
+          newValue: {
+            status: reopenedPayrollPeriod.status,
+            version: reopenedPayrollPeriod.version,
+            closedAt: reopenedPayrollPeriod.closedAt,
+            closedById: reopenedPayrollPeriod.closedById,
+          },
+        },
+        tx,
+      );
+
+      return reopenedPayrollPeriod;
+    });
   }
 }

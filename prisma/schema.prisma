@@ -132,7 +132,8 @@ model PayrollPeriod {
   endDate     DateTime?
   paymentDate DateTime?
 
-  status PayrollStatus @default(DRAFT)
+  status  PayrollStatus @default(DRAFT)
+  version Int           @default(0)
 
   createdById  String?
   approvedById String?
