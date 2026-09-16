@@ -1,0 +1,43 @@
+# ==========================================
+# NOMINA360 - Kiro protected files
+# ==========================================
+
+# Environment variables and secrets
+.env
+.env.*
+!.env.example
+
+# Keys and certificates
+*.pem
+*.key
+*.p12
+*.pfx
+*.crt
+
+# Credentials
+credentials/
+secrets/
+
+# Database dumps / backups
+*.sql
+*.dump
+*.backup
+backups/
+
+# Logs
+*.log
+
+# Production/customer data
+data/
+exports/
+customer-data/
+pii/
+
+# Build / generated dependencies
+node_modules/
+dist/
+coverage/
+
+# Temporary files
+tmp/
+temp/
