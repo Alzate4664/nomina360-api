@@ -2,12 +2,14 @@ import { INestApplication } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import request from 'supertest';
 import { AppModule } from '../src/app.module';
+import { AuditService } from '../src/audit/audit.service';
 import { PrismaService } from '../src/prisma/prisma.service';
 
 describe('Nomina360 API (e2e)', () => {
   let app: INestApplication;
   let prisma: PrismaService;
   let ownerToken: string;
+  let auditService: AuditService;
 
   let createdUserId: string | undefined;
   let createdEmployeeId: string | undefined;
@@ -15,6 +17,8 @@ describe('Nomina360 API (e2e)', () => {
   let createdNoveltyId: string | undefined;
   let terminationEmployeeId: string | undefined;
   let employmentTerminationId: string | undefined;
+  let rollbackFirstPeriodId: string | undefined;
+  let rollbackRecalculationPeriodId: string | undefined;
 
   const uniqueSuffix = `${Date.now()}-${Math.floor(Math.random() * 10000)}`;
 
@@ -28,6 +32,77 @@ describe('Nomina360 API (e2e)', () => {
 
   const testPayrollYear = 2099;
   const testPayrollMonth = 12;
+  const rollbackPayrollYear = 2099;
+  const rollbackFirstMonth = 10;
+  const rollbackRecalculationMonth = 11;
+  const rollbackPayrollType = 'EXTRAORDINARY' as const;
+
+  const getPayrollSnapshot = async (periodId: string) => {
+  const period = await prisma.payrollPeriod.findUniqueOrThrow({
+    where: {
+      id: periodId,
+    },
+    select: {
+      status: true,
+    },
+  });
+
+  const items = await prisma.payrollItem.findMany({
+    where: {
+      payrollPeriodId: periodId,
+    },
+    orderBy: {
+      id: 'asc',
+    },
+    select: {
+      id: true,
+      employeeId: true,
+      baseSalary: true,
+      earnedTotal: true,
+      deductionsTotal: true,
+      netPay: true,
+    },
+  });
+
+  const itemIds = items.map((item) => item.id);
+
+  const concepts =
+    itemIds.length > 0
+      ? await prisma.payrollConceptDetail.findMany({
+          where: {
+            payrollItemId: {
+              in: itemIds,
+            },
+          },
+          orderBy: {
+            id: 'asc',
+          },
+          select: {
+            id: true,
+            payrollItemId: true,
+            conceptCode: true,
+            conceptName: true,
+            type: true,
+            amount: true,
+          },
+        })
+      : [];
+
+  return {
+    status: period.status,
+    items: items.map((item) => ({
+      ...item,
+      baseSalary: item.baseSalary.toString(),
+      earnedTotal: item.earnedTotal.toString(),
+      deductionsTotal: item.deductionsTotal.toString(),
+      netPay: item.netPay.toString(),
+    })),
+    concepts: concepts.map((concept) => ({
+      ...concept,
+      amount: concept.amount.toString(),
+    })),
+  };
+};
 
   beforeAll(async () => {
     const moduleFixture: TestingModule = await Test.createTestingModule({
@@ -38,6 +113,7 @@ describe('Nomina360 API (e2e)', () => {
     await app.init();
 
     prisma = app.get(PrismaService);
+    auditService = app.get(AuditService);
 
     const loginResponse = await request(app.getHttpServer())
       .post('/auth/login')
@@ -67,6 +143,51 @@ describe('Nomina360 API (e2e)', () => {
       });
     }
     try {
+      const rollbackPeriodIds = [
+  rollbackFirstPeriodId,
+  rollbackRecalculationPeriodId,
+].filter((id): id is string => Boolean(id));
+
+if (rollbackPeriodIds.length > 0) {
+  const rollbackItems = await prisma.payrollItem.findMany({
+    where: {
+      payrollPeriodId: {
+        in: rollbackPeriodIds,
+      },
+    },
+    select: {
+      id: true,
+    },
+  });
+
+  const rollbackItemIds = rollbackItems.map((item) => item.id);
+
+  if (rollbackItemIds.length > 0) {
+    await prisma.payrollConceptDetail.deleteMany({
+      where: {
+        payrollItemId: {
+          in: rollbackItemIds,
+        },
+      },
+    });
+  }
+
+  await prisma.payrollItem.deleteMany({
+    where: {
+      payrollPeriodId: {
+        in: rollbackPeriodIds,
+      },
+    },
+  });
+
+  await prisma.payrollPeriod.deleteMany({
+    where: {
+      id: {
+        in: rollbackPeriodIds,
+      },
+    },
+  });
+}
       if (createdNoveltyId) {
         await prisma.payrollNovelty.deleteMany({
           where: {
@@ -106,6 +227,8 @@ describe('Nomina360 API (e2e)', () => {
         createdNoveltyId,
         terminationEmployeeId,
         employmentTerminationId,
+        rollbackFirstPeriodId,
+        rollbackRecalculationPeriodId,
       ].filter((id): id is string => Boolean(id));
 
       if (entityIds.length > 0) {
@@ -461,6 +584,158 @@ describe('Nomina360 API (e2e)', () => {
     expect(auditRecord).toBeDefined();
     expect(auditRecord.action).toBe('CREATE_PAYROLL_NOVELTY');
   });
+
+  it('POST /payroll/calculate debe hacer rollback real si falla el audit en un primer cálculo', async () => {
+  const employee = await prisma.employee.findUniqueOrThrow({
+    where: {
+      id: createdEmployeeId,
+    },
+    select: {
+      companyId: true,
+    },
+  });
+
+  const auditSpy = jest
+    .spyOn(auditService, 'log')
+    .mockRejectedValueOnce(new Error('E2E forced audit failure'));
+
+  try {
+    await request(app.getHttpServer())
+      .post('/payroll/calculate')
+      .set('Authorization', `Bearer ${ownerToken}`)
+      .send({
+        year: rollbackPayrollYear,
+        month: rollbackFirstMonth,
+        payrollType: rollbackPayrollType,
+      })
+      .expect(500);
+  } finally {
+    auditSpy.mockRestore();
+  }
+
+  const period = await prisma.payrollPeriod.findFirstOrThrow({
+    where: {
+      companyId: employee.companyId,
+      year: rollbackPayrollYear,
+      month: rollbackFirstMonth,
+      payrollType: rollbackPayrollType,
+    },
+  });
+
+  rollbackFirstPeriodId = period.id;
+
+  expect(period.status).toBe('DRAFT');
+
+  const items = await prisma.payrollItem.findMany({
+    where: {
+      payrollPeriodId: period.id,
+    },
+    select: {
+      id: true,
+    },
+  });
+
+  expect(items).toHaveLength(0);
+
+  const conceptCount = await prisma.payrollConceptDetail.count({
+    where: {
+      payrollItemId: {
+        in: items.map((item) => item.id),
+      },
+    },
+  });
+
+  expect(conceptCount).toBe(0);
+
+  const auditCount = await prisma.auditLog.count({
+    where: {
+      entity: 'PayrollPeriod',
+      entityId: period.id,
+      action: 'CALCULATE_PAYROLL',
+    },
+  });
+
+  expect(auditCount).toBe(0);
+});
+
+it('POST /payroll/calculate debe restaurar la liquidación anterior si falla una recalculación', async () => {
+  const employee = await prisma.employee.findUniqueOrThrow({
+    where: {
+      id: createdEmployeeId,
+    },
+    select: {
+      companyId: true,
+    },
+  });
+
+  await request(app.getHttpServer())
+    .post('/payroll/calculate')
+    .set('Authorization', `Bearer ${ownerToken}`)
+    .send({
+      year: rollbackPayrollYear,
+      month: rollbackRecalculationMonth,
+      payrollType: rollbackPayrollType,
+    })
+    .expect(201);
+
+  const period = await prisma.payrollPeriod.findFirstOrThrow({
+    where: {
+      companyId: employee.companyId,
+      year: rollbackPayrollYear,
+      month: rollbackRecalculationMonth,
+      payrollType: rollbackPayrollType,
+    },
+  });
+
+  rollbackRecalculationPeriodId = period.id;
+
+  const before = await getPayrollSnapshot(period.id);
+
+  expect(before.status).toBe('CALCULATED');
+  expect(before.items.length).toBeGreaterThan(0);
+
+  const auditCountBefore = await prisma.auditLog.count({
+    where: {
+      entity: 'PayrollPeriod',
+      entityId: period.id,
+      action: 'CALCULATE_PAYROLL',
+    },
+  });
+
+  expect(auditCountBefore).toBeGreaterThan(0);
+
+  const auditSpy = jest
+    .spyOn(auditService, 'log')
+    .mockRejectedValueOnce(new Error('E2E forced audit failure'));
+
+  try {
+    await request(app.getHttpServer())
+      .post('/payroll/calculate')
+      .set('Authorization', `Bearer ${ownerToken}`)
+      .send({
+        year: rollbackPayrollYear,
+        month: rollbackRecalculationMonth,
+        payrollType: rollbackPayrollType,
+      })
+      .expect(500);
+  } finally {
+    auditSpy.mockRestore();
+  }
+
+  const after = await getPayrollSnapshot(period.id);
+
+  expect(after).toEqual(before);
+
+  const auditCountAfter = await prisma.auditLog.count({
+    where: {
+      entity: 'PayrollPeriod',
+      entityId: period.id,
+      action: 'CALCULATE_PAYROLL',
+    },
+  });
+
+  expect(auditCountAfter).toBe(auditCountBefore);
+});
 
   it('DELETE /employees/:id debe desactivar el colaborador', async () => {
     const response = await request(app.getHttpServer())
