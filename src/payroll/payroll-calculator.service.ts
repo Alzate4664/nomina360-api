@@ -46,9 +46,7 @@ export class PayrollCalculatorService {
   calculate(input: PayrollCalculatorInput): PayrollCalculationResult {
     const dailySalary = input.baseSalary.dividedBy(30);
 
-    const sickLeaveResult = this.sickLeaveCalculator.calculate(
-      input.novelties,
-    );
+    const sickLeaveResult = this.sickLeaveCalculator.calculate(input.novelties);
 
     const vacationResult = this.vacationCalculator.calculate(
       input.baseSalary,
@@ -68,16 +66,9 @@ export class PayrollCalculatorService {
       0,
     );
 
-    /*
-     * BaseSalaryCalculator y TransportAllowanceCalculator todavía reciben
-     * cantidad de días como number. La conversión ocurre únicamente sobre
-     * una cantidad física, nunca sobre dinero.
-     */
-    const ordinaryWorkedDaysNumber = ordinaryWorkedDays.toNumber();
-
     const baseSalaryResult = this.baseSalaryCalculator.calculate(
       input.baseSalary,
-      ordinaryWorkedDaysNumber,
+      ordinaryWorkedDays,
     );
 
     const bonusResult = this.bonusCalculator.calculate(input.novelties);
@@ -100,7 +91,7 @@ export class PayrollCalculatorService {
     const transportAllowanceResult =
       this.transportAllowanceCalculator.calculate(
         input.baseSalary,
-        ordinaryWorkedDaysNumber,
+        ordinaryWorkedDays,
       );
 
     const absenceResult = this.absenceCalculator.calculate(
@@ -108,9 +99,7 @@ export class PayrollCalculatorService {
       input.novelties,
     );
 
-    const deductionResult = this.deductionCalculator.calculate(
-      input.novelties,
-    );
+    const deductionResult = this.deductionCalculator.calculate(input.novelties);
 
     const contributionBase = baseSalaryResult.earned
       .plus(sickLeaveResult.earned)
@@ -125,9 +114,7 @@ export class PayrollCalculatorService {
 
     const pensionResult = this.pensionCalculator.calculate(contributionBase);
 
-    const earnedTotal = contributionBase.plus(
-      transportAllowanceResult.earned,
-    );
+    const earnedTotal = contributionBase.plus(transportAllowanceResult.earned);
 
     const deductionsTotal = absenceResult.deductions
       .plus(deductionResult.deductions)

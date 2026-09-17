@@ -13,7 +13,7 @@ describe('TransportAllowanceCalculator', () => {
   it('should calculate the full monthly transport allowance for an eligible employee', () => {
     const result = calculator.calculate(
       new Decimal(PAYROLL_RATES.minimumWage),
-      30,
+      new Decimal(30),
     );
 
     expect(Decimal.isDecimal(result.earned)).toBe(true);
@@ -34,7 +34,7 @@ describe('TransportAllowanceCalculator', () => {
   it('should prorate and preserve the existing integer rounding behavior', () => {
     const result = calculator.calculate(
       new Decimal(PAYROLL_RATES.minimumWage),
-      15,
+      new Decimal(15),
     );
 
     expect(Decimal.isDecimal(result.earned)).toBe(true);
@@ -46,7 +46,7 @@ describe('TransportAllowanceCalculator', () => {
       PAYROLL_RATES.transportAllowance.salaryLimitInMinimumWages,
     );
 
-    const result = calculator.calculate(salaryLimit.plus(1), 30);
+    const result = calculator.calculate(salaryLimit.plus(1), new Decimal(30));
 
     expect(Decimal.isDecimal(result.earned)).toBe(true);
     expect(result.earned.toString()).toBe('0');
@@ -58,7 +58,7 @@ describe('TransportAllowanceCalculator', () => {
       PAYROLL_RATES.transportAllowance.salaryLimitInMinimumWages,
     );
 
-    const result = calculator.calculate(salaryLimit, 30);
+    const result = calculator.calculate(salaryLimit, new Decimal(30));
 
     expect(result.earned.toString()).toBe(
       PAYROLL_RATES.transportAllowance.monthlyAmount.toString(),
@@ -68,7 +68,7 @@ describe('TransportAllowanceCalculator', () => {
   it('should not pay transport allowance when worked days are zero', () => {
     const result = calculator.calculate(
       new Decimal(PAYROLL_RATES.minimumWage),
-      0,
+      new Decimal(0),
     );
 
     expect(Decimal.isDecimal(result.earned)).toBe(true);
@@ -79,7 +79,7 @@ describe('TransportAllowanceCalculator', () => {
   it('should cap worked days at 30', () => {
     const result = calculator.calculate(
       new Decimal(PAYROLL_RATES.minimumWage),
-      31,
+      new Decimal(31),
     );
 
     expect(result.earned.toString()).toBe(
@@ -88,11 +88,11 @@ describe('TransportAllowanceCalculator', () => {
   });
 
   it('should round an exact half peso consistently using Decimal arithmetic', () => {
-  const result = calculator.calculate(
-    new Decimal(PAYROLL_RATES.minimumWage),
-    27,
-  );
+    const result = calculator.calculate(
+      new Decimal(PAYROLL_RATES.minimumWage),
+      new Decimal(27),
+    );
 
-  expect(result.earned.toString()).toBe('224186');
-});
+    expect(result.earned.toString()).toBe('224186');
+  });
 });

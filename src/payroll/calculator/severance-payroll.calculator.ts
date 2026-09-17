@@ -22,7 +22,10 @@ export class SeverancePayrollCalculator {
 
   calculate(input: SeverancePayrollInput): SeverancePayrollResult {
     const transportAllowanceResult =
-      this.transportAllowanceCalculator.calculate(input.baseSalary, 30);
+      this.transportAllowanceCalculator.calculate(
+        input.baseSalary,
+        new Decimal(30),
+      );
 
     const severanceBase = input.baseSalary.plus(
       transportAllowanceResult.earned,

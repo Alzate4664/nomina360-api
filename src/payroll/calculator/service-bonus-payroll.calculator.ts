@@ -18,7 +18,10 @@ export class ServiceBonusPayrollCalculator {
 
   calculate(input: ServiceBonusPayrollInput): PayrollCalculationResult {
     const transportAllowanceResult =
-      this.transportAllowanceCalculator.calculate(input.baseSalary, 30);
+      this.transportAllowanceCalculator.calculate(
+        input.baseSalary,
+        new Decimal(30),
+      );
 
     const serviceBonusResult = this.serviceBonusCalculator.calculate(
       input.baseSalary,

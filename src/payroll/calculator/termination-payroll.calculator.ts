@@ -33,7 +33,7 @@ export class TerminationPayrollCalculator {
 
     const salaryResult = this.baseSalaryCalculator.calculate(
       input.baseSalary,
-      salaryDays,
+      new Decimal(salaryDays),
     );
 
     const terminationYear = input.terminationDate.getUTCFullYear();
