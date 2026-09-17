@@ -1,42 +1,36 @@
 import { Injectable } from '@nestjs/common';
 import { ConceptType } from '@prisma/client';
+import Decimal from 'decimal.js';
 import { PAYROLL_RATES } from '../config/payroll-rates.config';
-
-export interface PayrollConcept {
-  code: string;
-  name: string;
-  type: ConceptType;
-  amount: number;
-}
+import { PayrollConceptAmount } from '../../money/payroll-money.types';
 
 interface SeveranceCalculationInput {
-  severanceBase: number;
+  severanceBase: Decimal;
   accruedDays: number;
 }
 
 @Injectable()
 export class SeveranceCalculator {
   calculate(input: SeveranceCalculationInput) {
-    if (input.severanceBase <= 0 || input.accruedDays <= 0) {
+    if (input.severanceBase.lte(0) || input.accruedDays <= 0) {
       return {
-        severance: 0,
-        interest: 0,
-        total: 0,
-        concepts: [] as PayrollConcept[],
+        severance: new Decimal(0),
+        interest: new Decimal(0),
+        total: new Decimal(0),
+        concepts: [] as PayrollConceptAmount[],
       };
     }
 
-    const severance =
-      (input.severanceBase * input.accruedDays) /
-      PAYROLL_RATES.severance.daysPerYear;
+    const severance = input.severanceBase
+      .times(input.accruedDays)
+      .dividedBy(PAYROLL_RATES.severance.daysPerYear);
 
-    const interest =
-      (severance *
-        PAYROLL_RATES.severance.interestAnnualRate *
-        input.accruedDays) /
-      PAYROLL_RATES.severance.daysPerYear;
+    const interest = severance
+      .times(PAYROLL_RATES.severance.interestAnnualRate)
+      .times(input.accruedDays)
+      .dividedBy(PAYROLL_RATES.severance.daysPerYear);
 
-    const concepts: PayrollConcept[] = [
+    const concepts: PayrollConceptAmount[] = [
       {
         code: 'SEVERANCE',
         name: 'Cesantías',
@@ -54,7 +48,7 @@ export class SeveranceCalculator {
     return {
       severance,
       interest,
-      total: severance + interest,
+      total: severance.plus(interest),
       concepts,
     };
   }

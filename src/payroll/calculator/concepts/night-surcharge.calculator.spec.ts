@@ -1,4 +1,5 @@
-import { ConceptType } from '@prisma/client';
+import { ConceptType, PayrollNovelty, Prisma } from '@prisma/client';
+import Decimal from 'decimal.js';
 import { NightSurchargeCalculator } from './night-surcharge.calculator';
 
 describe('NightSurchargeCalculator', () => {
@@ -8,32 +9,41 @@ describe('NightSurchargeCalculator', () => {
     calculator = new NightSurchargeCalculator();
   });
 
-  it('should calculate nighttime surcharge using the configured rate', () => {
-    const baseSalary = 2100000;
+  const createNightSurcharge = (
+    hours: string,
+    description = 'Recargo nocturno',
+  ): PayrollNovelty =>
+    ({
+      type: 'NIGHT_SURCHARGE',
+      quantity: new Prisma.Decimal(hours),
+      amount: null,
+      description,
+    }) as unknown as PayrollNovelty;
 
-    const result = calculator.calculate(baseSalary, [
-      {
-        id: 'novelty-1',
-        companyId: 'company-1',
-        employeeId: 'employee-1',
-        payrollPeriodId: 'period-1',
-        type: 'NIGHT_SURCHARGE',
-        quantity: 2,
-        amount: null,
-        description: '2 horas recargo nocturno',
-        createdAt: new Date(),
-      },
+  it('should calculate nighttime surcharge using the configured rate', () => {
+    const result = calculator.calculate(new Decimal('2100000'), [
+      createNightSurcharge('2', '2 horas recargo nocturno'),
     ]);
 
-    expect(result.earned).toBe(7000);
+    expect(Decimal.isDecimal(result.earned)).toBe(true);
+    expect(result.earned.toString()).toBe('7000');
 
     expect(result.concepts).toEqual([
       {
         code: 'NIGHT_SURCHARGE',
         name: '2 horas recargo nocturno',
         type: ConceptType.EARNING,
-        amount: 7000,
+        amount: new Decimal('7000'),
       },
     ]);
+  });
+
+  it('should preserve fractional nighttime hours exactly', () => {
+    const result = calculator.calculate(new Decimal('2100000'), [
+      createNightSurcharge('1.5'),
+    ]);
+
+    expect(result.earned.toString()).toBe('5250');
+    expect(Decimal.isDecimal(result.concepts[0].amount)).toBe(true);
   });
 });

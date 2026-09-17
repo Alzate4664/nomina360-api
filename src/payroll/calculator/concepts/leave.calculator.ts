@@ -1,22 +1,18 @@
 import { Injectable } from '@nestjs/common';
 import { ConceptType, LeaveType, PayrollNovelty } from '@prisma/client';
-
-interface PayrollConcept {
-  code: string;
-  name: string;
-  type: ConceptType;
-  amount: number;
-}
+import Decimal from 'decimal.js';
+import { toDecimal } from '../../money/decimal';
+import { PayrollConceptAmount } from '../../money/payroll-money.types';
 
 @Injectable()
 export class LeaveCalculator {
-  calculate(baseSalary: number, novelties: PayrollNovelty[]) {
-    const dailySalary = baseSalary / 30;
+  calculate(baseSalary: Decimal, novelties: PayrollNovelty[]) {
+    const dailySalary = baseSalary.dividedBy(30);
 
-    let earned = 0;
-    let totalDays = 0;
+    let earned = new Decimal(0);
+    let totalDays = new Decimal(0);
 
-    const concepts: PayrollConcept[] = [];
+    const concepts: PayrollConceptAmount[] = [];
 
     for (const novelty of novelties) {
       if (novelty.type !== 'LEAVE') {
@@ -27,21 +23,21 @@ export class LeaveCalculator {
         continue;
       }
 
-      const days = Number(novelty.quantity ?? 0);
+      const days = toDecimal(novelty.quantity ?? '0');
 
-      if (days <= 0) {
+      if (days.lte(0)) {
         continue;
       }
 
-      totalDays += days;
+      totalDays = totalDays.plus(days);
 
       if (novelty.leaveType === LeaveType.UNPAID) {
         continue;
       }
 
-      const amount = dailySalary * days;
+      const amount = dailySalary.times(days);
 
-      earned += amount;
+      earned = earned.plus(amount);
 
       concepts.push({
         code: 'LEAVE',

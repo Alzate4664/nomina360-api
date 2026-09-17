@@ -1,11 +1,17 @@
 import { Injectable } from '@nestjs/common';
+import Decimal from 'decimal.js';
 import { SeveranceCalculator } from './concepts/severance.calculator';
 import { TransportAllowanceCalculator } from './concepts/transport-allowance.calculator';
+import { PayrollCalculationResult } from '../money/payroll-money.types';
 
 interface SeverancePayrollInput {
-  baseSalary: number;
+  baseSalary: Decimal;
   accruedDays: number;
 }
+
+type SeverancePayrollResult = PayrollCalculationResult & {
+  severanceBase: Decimal;
+};
 
 @Injectable()
 export class SeverancePayrollCalculator {
@@ -14,11 +20,13 @@ export class SeverancePayrollCalculator {
     private readonly transportAllowanceCalculator: TransportAllowanceCalculator,
   ) {}
 
-  calculate(input: SeverancePayrollInput) {
+  calculate(input: SeverancePayrollInput): SeverancePayrollResult {
     const transportAllowanceResult =
       this.transportAllowanceCalculator.calculate(input.baseSalary, 30);
 
-    const severanceBase = input.baseSalary + transportAllowanceResult.earned;
+    const severanceBase = input.baseSalary.plus(
+      transportAllowanceResult.earned,
+    );
 
     const severanceResult = this.severanceCalculator.calculate({
       severanceBase,
@@ -28,7 +36,7 @@ export class SeverancePayrollCalculator {
     return {
       severanceBase,
       earnedTotal: severanceResult.total,
-      deductionsTotal: 0,
+      deductionsTotal: new Decimal(0),
       netPay: severanceResult.total,
       concepts: severanceResult.concepts,
     };

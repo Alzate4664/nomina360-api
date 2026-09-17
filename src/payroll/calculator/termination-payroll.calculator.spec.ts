@@ -1,3 +1,4 @@
+import Decimal from 'decimal.js';
 import { AccruedDaysCalculator } from './accrued-days.calculator';
 import { BaseSalaryCalculator } from './concepts/base-salary.calculator';
 import { SeveranceCalculator } from './concepts/severance.calculator';
@@ -43,7 +44,7 @@ describe('TerminationPayrollCalculator', () => {
 
   it('should calculate pending salary through the exact termination date', () => {
     const result = calculator.calculate({
-      baseSalary: 3000000,
+      baseSalary: new Decimal('3000000'),
       employeeStartDate: new Date('2025-01-01T00:00:00.000Z'),
       terminationDate: new Date('2026-09-08T00:00:00.000Z'),
       unpaidSalaryStartDate: new Date('2026-09-01T00:00:00.000Z'),
@@ -51,12 +52,14 @@ describe('TerminationPayrollCalculator', () => {
     });
 
     expect(result.salaryDays).toBe(8);
-    expect(result.salary).toBe(800000);
+
+    expect(Decimal.isDecimal(result.salary)).toBe(true);
+    expect(result.salary.toString()).toBe('800000');
   });
 
   it('should calculate severance only for the current year', () => {
     const result = calculator.calculate({
-      baseSalary: 3000000,
+      baseSalary: new Decimal('3000000'),
       employeeStartDate: new Date('2024-01-01T00:00:00.000Z'),
       terminationDate: new Date('2026-09-08T00:00:00.000Z'),
       unpaidSalaryStartDate: new Date('2026-09-01T00:00:00.000Z'),
@@ -64,12 +67,13 @@ describe('TerminationPayrollCalculator', () => {
     });
 
     expect(result.severanceDays).toBe(248);
-    expect(result.severance).toBeGreaterThan(0);
+    expect(Decimal.isDecimal(result.severance)).toBe(true);
+    expect(result.severance.gt(0)).toBe(true);
   });
 
   it('should calculate service bonus from the current semester', () => {
     const result = calculator.calculate({
-      baseSalary: 3000000,
+      baseSalary: new Decimal('3000000'),
       employeeStartDate: new Date('2024-01-01T00:00:00.000Z'),
       terminationDate: new Date('2026-09-08T00:00:00.000Z'),
       unpaidSalaryStartDate: new Date('2026-09-01T00:00:00.000Z'),
@@ -77,12 +81,13 @@ describe('TerminationPayrollCalculator', () => {
     });
 
     expect(result.serviceBonusDays).toBe(68);
-    expect(result.serviceBonus).toBeGreaterThan(0);
+    expect(Decimal.isDecimal(result.serviceBonus)).toBe(true);
+    expect(result.serviceBonus.gt(0)).toBe(true);
   });
 
   it('should use employee start date when hired during the semester', () => {
     const result = calculator.calculate({
-      baseSalary: 3000000,
+      baseSalary: new Decimal('3000000'),
       employeeStartDate: new Date('2026-07-15T00:00:00.000Z'),
       terminationDate: new Date('2026-09-08T00:00:00.000Z'),
       unpaidSalaryStartDate: new Date('2026-09-01T00:00:00.000Z'),
@@ -94,23 +99,28 @@ describe('TerminationPayrollCalculator', () => {
 
   it('should include pending vacation compensation in total earnings', () => {
     const result = calculator.calculate({
-      baseSalary: 3000000,
+      baseSalary: new Decimal('3000000'),
       employeeStartDate: new Date('2025-01-01T00:00:00.000Z'),
       terminationDate: new Date('2026-09-08T00:00:00.000Z'),
       unpaidSalaryStartDate: new Date('2026-09-01T00:00:00.000Z'),
       pendingVacationDays: 7.5,
     });
 
-    expect(result.vacation).toBe(750000);
+    expect(Decimal.isDecimal(result.vacation)).toBe(true);
+    expect(result.vacation.toString()).toBe('750000');
 
-    expect(result.earnedTotal).toBe(
-      result.salary + result.severance + result.serviceBonus + result.vacation,
-    );
+    const expectedTotal = result.salary
+      .plus(result.severance)
+      .plus(result.serviceBonus)
+      .plus(result.vacation);
+
+    expect(Decimal.isDecimal(result.earnedTotal)).toBe(true);
+    expect(result.earnedTotal.eq(expectedTotal)).toBe(true);
   });
 
-  it('should expose all generated concepts', () => {
+  it('should expose all generated concepts as Decimal amounts', () => {
     const result = calculator.calculate({
-      baseSalary: 3000000,
+      baseSalary: new Decimal('3000000'),
       employeeStartDate: new Date('2025-01-01T00:00:00.000Z'),
       terminationDate: new Date('2026-09-08T00:00:00.000Z'),
       unpaidSalaryStartDate: new Date('2026-09-01T00:00:00.000Z'),
@@ -124,5 +134,9 @@ describe('TerminationPayrollCalculator', () => {
     expect(codes).toContain('SEVERANCE_INTEREST');
     expect(codes).toContain('SERVICE_BONUS');
     expect(codes).toContain('TERMINATION_VACATION');
+
+    expect(
+      result.concepts.every((concept) => Decimal.isDecimal(concept.amount)),
+    ).toBe(true);
   });
 });

@@ -8,6 +8,7 @@ import { SeverancePayrollCalculator } from '../calculator/severance-payroll.calc
 import { PayrollCalculatorService } from '../payroll-calculator.service';
 import { CalculatePayrollUseCase } from './calculate-payroll.use-case';
 import { ServiceBonusPayrollCalculator } from '../calculator/service-bonus-payroll.calculator';
+import Decimal from 'decimal.js';
 
 describe('CalculatePayrollUseCase', () => {
   let useCase: CalculatePayrollUseCase;
@@ -188,10 +189,16 @@ describe('CalculatePayrollUseCase', () => {
     await useCase.execute('company-1', 'user-1', 2026, 12, PayrollType.MONTHLY);
 
     expect(payrollCalculatorMock.calculate).toHaveBeenCalledWith({
-      baseSalary: 3000000,
+      baseSalary: expect.any(Decimal),
       workedDays: 30,
       novelties: [],
     });
+
+    const regularPayrollInput =
+      payrollCalculatorMock.calculate.mock.calls[0][0];
+
+    expect(Decimal.isDecimal(regularPayrollInput.baseSalary)).toBe(true);
+    expect(regularPayrollInput.baseSalary.toString()).toBe('3000000');
 
     expect(prismaMock.$transaction).toHaveBeenCalledTimes(1);
     expect(severancePayrollCalculatorMock.calculate).not.toHaveBeenCalled();
@@ -256,9 +263,15 @@ describe('CalculatePayrollUseCase', () => {
     );
 
     expect(severancePayrollCalculatorMock.calculate).toHaveBeenCalledWith({
-      baseSalary: 3000000,
+      baseSalary: expect.any(Decimal),
       accruedDays: 360,
     });
+
+    const severanceInput =
+      severancePayrollCalculatorMock.calculate.mock.calls[0][0];
+
+    expect(Decimal.isDecimal(severanceInput.baseSalary)).toBe(true);
+    expect(severanceInput.baseSalary.toString()).toBe('3000000');
 
     expect(prismaMock.$transaction).toHaveBeenCalledTimes(1);
     expect(payrollCalculatorMock.calculate).not.toHaveBeenCalled();
@@ -347,9 +360,15 @@ describe('CalculatePayrollUseCase', () => {
     );
 
     expect(serviceBonusPayrollCalculatorMock.calculate).toHaveBeenCalledWith({
-      baseSalary: 3000000,
+      baseSalary: expect.any(Decimal),
       accruedDays: 180,
     });
+
+    const serviceBonusInput =
+      serviceBonusPayrollCalculatorMock.calculate.mock.calls[0][0];
+
+    expect(Decimal.isDecimal(serviceBonusInput.baseSalary)).toBe(true);
+    expect(serviceBonusInput.baseSalary.toString()).toBe('3000000');
 
     expect(payrollCalculatorMock.calculate).not.toHaveBeenCalled();
     expect(severancePayrollCalculatorMock.calculate).not.toHaveBeenCalled();

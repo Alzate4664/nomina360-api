@@ -1,29 +1,25 @@
 import { Injectable } from '@nestjs/common';
 import { ConceptType } from '@prisma/client';
-
-interface PayrollConcept {
-  code: string;
-  name: string;
-  type: ConceptType;
-  amount: number;
-}
+import Decimal from 'decimal.js';
+import { PayrollConceptAmount } from '../../money/payroll-money.types';
 
 @Injectable()
 export class HealthCalculator {
-  calculate(earnedTotal: number) {
-    const amount = earnedTotal * 0.04;
+  calculate(earnedTotal: Decimal) {
+    const amount = earnedTotal.times('0.04');
+
+    const concepts: PayrollConceptAmount[] = [
+      {
+        code: 'HEALTH',
+        name: 'Aporte salud empleado',
+        type: ConceptType.DEDUCTION,
+        amount,
+      },
+    ];
 
     return {
       deductions: amount,
-
-      concepts: [
-        {
-          code: 'HEALTH',
-          name: 'Aporte salud empleado',
-          type: ConceptType.DEDUCTION,
-          amount,
-        } satisfies PayrollConcept,
-      ],
+      concepts,
     };
   }
 }

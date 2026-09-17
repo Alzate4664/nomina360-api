@@ -1,20 +1,14 @@
 import { Injectable } from '@nestjs/common';
-import { ConceptType } from '@prisma/client';
+import Decimal from 'decimal.js';
 import { AccruedDaysCalculator } from './accrued-days.calculator';
 import { BaseSalaryCalculator } from './concepts/base-salary.calculator';
 import { TerminationVacationCalculator } from './concepts/termination-vacation.calculator';
 import { ServiceBonusPayrollCalculator } from './service-bonus-payroll.calculator';
 import { SeverancePayrollCalculator } from './severance-payroll.calculator';
-
-interface PayrollConcept {
-  code: string;
-  name: string;
-  type: ConceptType;
-  amount: number;
-}
+import { PayrollConceptAmount } from '../money/payroll-money.types';
 
 interface TerminationPayrollInput {
-  baseSalary: number;
+  baseSalary: Decimal;
   employeeStartDate: Date;
   terminationDate: Date;
   unpaidSalaryStartDate: Date;
@@ -81,18 +75,17 @@ export class TerminationPayrollCalculator {
       input.pendingVacationDays,
     );
 
-    const concepts: PayrollConcept[] = [
+    const concepts: PayrollConceptAmount[] = [
       ...salaryResult.concepts,
       ...severanceResult.concepts,
       ...serviceBonusResult.concepts,
       ...vacationResult.concepts,
     ];
 
-    const earnedTotal =
-      salaryResult.earned +
-      severanceResult.earnedTotal +
-      serviceBonusResult.earnedTotal +
-      vacationResult.earned;
+    const earnedTotal = salaryResult.earned
+      .plus(severanceResult.earnedTotal)
+      .plus(serviceBonusResult.earnedTotal)
+      .plus(vacationResult.earned);
 
     return {
       salaryDays,

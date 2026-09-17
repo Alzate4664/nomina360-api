@@ -1,22 +1,20 @@
 import { Injectable } from '@nestjs/common';
 import { ConceptType, PayrollNovelty } from '@prisma/client';
+import Decimal from 'decimal.js';
+import { toDecimal } from '../../money/decimal';
+import { PayrollConceptAmount } from '../../money/payroll-money.types';
 import { PAYROLL_RATES } from '../config/payroll-rates.config';
-
-interface PayrollConcept {
-  code: string;
-  name: string;
-  type: ConceptType;
-  amount: number;
-}
 
 @Injectable()
 export class SundayHolidayCalculator {
-  calculate(baseSalary: number, novelties: PayrollNovelty[]) {
-    const hourlyRate = baseSalary / PAYROLL_RATES.standardMonthlyHours;
+  calculate(baseSalary: Decimal, novelties: PayrollNovelty[]) {
+    const hourlyRate = baseSalary.dividedBy(
+      PAYROLL_RATES.standardMonthlyHours,
+    );
 
-    let earned = 0;
+    let earned = new Decimal(0);
 
-    const concepts: PayrollConcept[] = [];
+    const concepts: PayrollConceptAmount[] = [];
 
     for (const novelty of novelties) {
       if (
@@ -26,12 +24,13 @@ export class SundayHolidayCalculator {
         continue;
       }
 
-      const hours = Number(novelty.quantity ?? 0);
+      const hours = toDecimal(novelty.quantity ?? '0');
 
-      const amount =
-        hourlyRate * hours * PAYROLL_RATES.surcharges.sundayHolidayRate;
+      const amount = hourlyRate
+        .times(hours)
+        .times(toDecimal(PAYROLL_RATES.surcharges.sundayHolidayRate));
 
-      earned += amount;
+      earned = earned.plus(amount);
 
       concepts.push({
         code: novelty.type,

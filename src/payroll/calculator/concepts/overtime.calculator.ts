@@ -1,45 +1,44 @@
 import { Injectable } from '@nestjs/common';
 import { ConceptType, PayrollNovelty } from '@prisma/client';
+import Decimal from 'decimal.js';
+import { toDecimal } from '../../money/decimal';
+import { PayrollConceptAmount } from '../../money/payroll-money.types';
 import { PAYROLL_RATES } from '../config/payroll-rates.config';
-
-interface PayrollConcept {
-  code: string;
-  name: string;
-  type: ConceptType;
-  amount: number;
-}
 
 @Injectable()
 export class OvertimeCalculator {
-  calculate(baseSalary: number, novelties: PayrollNovelty[]) {
-    const hourlyRate = baseSalary / PAYROLL_RATES.standardMonthlyHours;
+  calculate(baseSalary: Decimal, novelties: PayrollNovelty[]) {
+    const hourlyRate = baseSalary.dividedBy(
+      PAYROLL_RATES.standardMonthlyHours,
+    );
 
-    let earned = 0;
+    let earned = new Decimal(0);
 
-    const concepts: PayrollConcept[] = [];
+    const concepts: PayrollConceptAmount[] = [];
 
     for (const novelty of novelties) {
       if (novelty.type !== 'OVERTIME' && novelty.type !== 'OVERTIME_NIGHT') {
         continue;
       }
 
-      const hours = Number(novelty.quantity ?? 0);
+      const hours = toDecimal(novelty.quantity ?? '0');
 
-      const overtimeMultiplier =
+      const overtimeMultiplier = toDecimal(
         novelty.type === 'OVERTIME_NIGHT'
           ? PAYROLL_RATES.overtime.nighttimeMultiplier
-          : PAYROLL_RATES.overtime.daytimeMultiplier;
+          : PAYROLL_RATES.overtime.daytimeMultiplier,
+      );
 
       const daySurchargeRate =
         novelty.dayType === 'SUNDAY' || novelty.dayType === 'HOLIDAY'
-          ? PAYROLL_RATES.surcharges.sundayHolidayRate
-          : 0;
+          ? toDecimal(PAYROLL_RATES.surcharges.sundayHolidayRate)
+          : new Decimal(0);
 
-      const multiplier = overtimeMultiplier + daySurchargeRate;
+      const multiplier = overtimeMultiplier.plus(daySurchargeRate);
 
-      const amount = hourlyRate * hours * multiplier;
+      const amount = hourlyRate.times(hours).times(multiplier);
 
-      earned += amount;
+      earned = earned.plus(amount);
 
       concepts.push({
         code: novelty.type,

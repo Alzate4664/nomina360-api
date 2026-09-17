@@ -9,6 +9,7 @@ import { CreateEmploymentTerminationDto } from './dto/create-employment-terminat
 import { EmployeeStatus, TerminationStatus } from '@prisma/client';
 import { TerminationPayrollCalculator } from '../payroll/calculator/termination-payroll.calculator';
 import { CalculateEmploymentTerminationDto } from './dto/calculate-employment-termination.dto';
+import { toDecimal } from '../payroll/money/decimal';
 
 @Injectable()
 export class EmploymentTerminationsService {
@@ -137,9 +138,10 @@ export class EmploymentTerminationsService {
     }
 
     const pendingVacationDays = dto.pendingVacationDays ?? 0;
+    const baseSalary = toDecimal(termination.employee.baseSalary);
 
     const calculation = this.terminationPayrollCalculator.calculate({
-      baseSalary: Number(termination.employee.baseSalary),
+      baseSalary,
       employeeStartDate: termination.employee.startDate,
       terminationDate: termination.terminationDate,
       unpaidSalaryStartDate,
@@ -161,11 +163,11 @@ export class EmploymentTerminationsService {
         data: {
           unpaidSalaryStartDate,
           pendingVacationDays,
-          calculatedBaseSalary: Number(termination.employee.baseSalary),
+          calculatedBaseSalary: baseSalary.toString(),
           salaryDays: calculation.salaryDays,
           severanceDays: calculation.severanceDays,
           serviceBonusDays: calculation.serviceBonusDays,
-          earnedTotal: calculation.earnedTotal,
+          earnedTotal: calculation.earnedTotal.toString(),
           calculatedAt,
           status: TerminationStatus.CALCULATED,
           version: {
@@ -216,12 +218,12 @@ export class EmploymentTerminationsService {
           newValue: {
             status: TerminationStatus.CALCULATED,
             version: termination.version + 1,
-            calculatedBaseSalary: Number(termination.employee.baseSalary),
+            calculatedBaseSalary: baseSalary.toString(),
             salaryDays: calculation.salaryDays,
             severanceDays: calculation.severanceDays,
             serviceBonusDays: calculation.serviceBonusDays,
             pendingVacationDays,
-            earnedTotal: calculation.earnedTotal,
+            earnedTotal: calculation.earnedTotal.toString(),
             calculatedAt: calculatedAt.toISOString(),
           },
         },

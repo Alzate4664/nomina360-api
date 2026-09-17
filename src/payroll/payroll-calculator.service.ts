@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
-import { ConceptType, PayrollNovelty } from '@prisma/client';
+import { PayrollNovelty } from '@prisma/client';
+import Decimal from 'decimal.js';
 import { AbsenceCalculator } from './calculator/concepts/absence.calculator';
 import { BaseSalaryCalculator } from './calculator/concepts/base-salary.calculator';
 import { BonusCalculator } from './calculator/concepts/bonus.calculator';
@@ -13,12 +14,15 @@ import { TransportAllowanceCalculator } from './calculator/concepts/transport-al
 import { SickLeaveCalculator } from './calculator/concepts/sick-leave.calculator';
 import { VacationCalculator } from './calculator/concepts/vacation.calculator';
 import { LeaveCalculator } from './calculator/concepts/leave.calculator';
+import {
+  PayrollCalculationResult,
+  PayrollConceptAmount,
+} from './money/payroll-money.types';
 
-interface PayrollConcept {
-  code: string;
-  name: string;
-  type: ConceptType;
-  amount: number;
+interface PayrollCalculatorInput {
+  baseSalary: Decimal;
+  workedDays: number;
+  novelties: PayrollNovelty[];
 }
 
 @Injectable()
@@ -39,14 +43,12 @@ export class PayrollCalculatorService {
     private readonly leaveCalculator: LeaveCalculator,
   ) {}
 
-  calculate(input: {
-    baseSalary: number;
-    workedDays: number;
-    novelties: PayrollNovelty[];
-  }) {
-    const dailySalary = input.baseSalary / 30;
+  calculate(input: PayrollCalculatorInput): PayrollCalculationResult {
+    const dailySalary = input.baseSalary.dividedBy(30);
 
-    const sickLeaveResult = this.sickLeaveCalculator.calculate(input.novelties);
+    const sickLeaveResult = this.sickLeaveCalculator.calculate(
+      input.novelties,
+    );
 
     const vacationResult = this.vacationCalculator.calculate(
       input.baseSalary,
@@ -58,17 +60,24 @@ export class PayrollCalculatorService {
       input.novelties,
     );
 
-    const ordinaryWorkedDays = Math.max(
-      input.workedDays -
-        sickLeaveResult.days -
-        vacationResult.days -
-        leaveResult.days,
+    const ordinaryWorkedDays = Decimal.max(
+      new Decimal(input.workedDays)
+        .minus(sickLeaveResult.days)
+        .minus(vacationResult.days)
+        .minus(leaveResult.days),
       0,
     );
 
+    /*
+     * BaseSalaryCalculator y TransportAllowanceCalculator todavía reciben
+     * cantidad de días como number. La conversión ocurre únicamente sobre
+     * una cantidad física, nunca sobre dinero.
+     */
+    const ordinaryWorkedDaysNumber = ordinaryWorkedDays.toNumber();
+
     const baseSalaryResult = this.baseSalaryCalculator.calculate(
       input.baseSalary,
-      ordinaryWorkedDays,
+      ordinaryWorkedDaysNumber,
     );
 
     const bonusResult = this.bonusCalculator.calculate(input.novelties);
@@ -91,7 +100,7 @@ export class PayrollCalculatorService {
     const transportAllowanceResult =
       this.transportAllowanceCalculator.calculate(
         input.baseSalary,
-        ordinaryWorkedDays,
+        ordinaryWorkedDaysNumber,
       );
 
     const absenceResult = this.absenceCalculator.calculate(
@@ -99,31 +108,33 @@ export class PayrollCalculatorService {
       input.novelties,
     );
 
-    const deductionResult = this.deductionCalculator.calculate(input.novelties);
+    const deductionResult = this.deductionCalculator.calculate(
+      input.novelties,
+    );
 
-    const contributionBase =
-      baseSalaryResult.earned +
-      sickLeaveResult.earned +
-      vacationResult.earned +
-      leaveResult.earned +
-      bonusResult.earned +
-      overtimeResult.earned +
-      nightSurchargeResult.earned +
-      sundayHolidayResult.earned;
+    const contributionBase = baseSalaryResult.earned
+      .plus(sickLeaveResult.earned)
+      .plus(vacationResult.earned)
+      .plus(leaveResult.earned)
+      .plus(bonusResult.earned)
+      .plus(overtimeResult.earned)
+      .plus(nightSurchargeResult.earned)
+      .plus(sundayHolidayResult.earned);
 
     const healthResult = this.healthCalculator.calculate(contributionBase);
 
     const pensionResult = this.pensionCalculator.calculate(contributionBase);
 
-    const earnedTotal = contributionBase + transportAllowanceResult.earned;
+    const earnedTotal = contributionBase.plus(
+      transportAllowanceResult.earned,
+    );
 
-    let deductionsTotal =
-      absenceResult.deductions +
-      deductionResult.deductions +
-      healthResult.deductions +
-      pensionResult.deductions;
+    const deductionsTotal = absenceResult.deductions
+      .plus(deductionResult.deductions)
+      .plus(healthResult.deductions)
+      .plus(pensionResult.deductions);
 
-    const concepts: PayrollConcept[] = [
+    const concepts: PayrollConceptAmount[] = [
       ...baseSalaryResult.concepts,
       ...sickLeaveResult.concepts,
       ...vacationResult.concepts,
@@ -142,7 +153,7 @@ export class PayrollCalculatorService {
     return {
       earnedTotal,
       deductionsTotal,
-      netPay: earnedTotal - deductionsTotal,
+      netPay: earnedTotal.minus(deductionsTotal),
       concepts,
     };
   }

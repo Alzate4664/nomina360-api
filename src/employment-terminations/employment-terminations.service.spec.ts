@@ -10,6 +10,7 @@ import { AuditService } from '../audit/audit.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { EmploymentTerminationsService } from './employment-terminations.service';
 import { TerminationPayrollCalculator } from '../payroll/calculator/termination-payroll.calculator';
+import Decimal from 'decimal.js';
 
 describe('EmploymentTerminationsService', () => {
   let service: EmploymentTerminationsService;
@@ -396,12 +397,18 @@ describe('EmploymentTerminationsService', () => {
     );
 
     expect(terminationPayrollCalculator.calculate).toHaveBeenCalledWith({
-      baseSalary: 3000000,
+      baseSalary: expect.any(Decimal),
       employeeStartDate: employee.startDate,
       terminationDate: termination.terminationDate,
-      unpaidSalaryStartDate: new Date('2026-09-01'),
+      unpaidSalaryStartDate: new Date('2026-09-01T00:00:00.000Z'),
       pendingVacationDays: 7.5,
     });
+
+    const terminationInput =
+      terminationPayrollCalculator.calculate.mock.calls[0][0];
+
+    expect(Decimal.isDecimal(terminationInput.baseSalary)).toBe(true);
+    expect(terminationInput.baseSalary.toString()).toBe('3000000');
 
     expect(tx.employmentTermination.updateMany).toHaveBeenCalledWith({
       where: {
@@ -414,11 +421,11 @@ describe('EmploymentTerminationsService', () => {
       },
       data: expect.objectContaining({
         pendingVacationDays: 7.5,
-        calculatedBaseSalary: 3000000,
+        calculatedBaseSalary: '3000000',
         salaryDays: 8,
         severanceDays: 248,
         serviceBonusDays: 68,
-        earnedTotal: 4650000,
+        earnedTotal: '4650000',
         status: TerminationStatus.CALCULATED,
         version: {
           increment: 1,
