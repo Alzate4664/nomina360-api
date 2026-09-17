@@ -600,6 +600,172 @@ if (rollbackPeriodIds.length > 0) {
     expect(auditRecord.action).toBe('CREATE_PAYROLL_NOVELTY');
   });
 
+  it('POST /payroll/calculate debe persistir aritmética Decimal exacta sin ruido IEEE-754', async () => {
+  let precisionPeriodId: string | undefined;
+  let precisionNoveltyId: string | undefined;
+
+  const precisionPayrollYear = 2098;
+  const precisionPayrollMonth = 8;
+  const precisionPayrollType = 'EXTRAORDINARY' as const;
+
+  try {
+    const periodResponse = await request(app.getHttpServer())
+      .post('/payroll/periods')
+      .set('Authorization', `Bearer ${ownerToken}`)
+      .send({
+        name: `Precisión Decimal E2E ${uniqueSuffix}`,
+        payrollType: precisionPayrollType,
+        year: precisionPayrollYear,
+        month: precisionPayrollMonth,
+      })
+      .expect(201);
+
+    precisionPeriodId = periodResponse.body.id;
+
+    const noveltyResponse = await request(app.getHttpServer())
+      .post('/payroll-novelties')
+      .set('Authorization', `Bearer ${ownerToken}`)
+      .send({
+        employeeId: createdEmployeeId,
+        payrollPeriodId: precisionPeriodId,
+        type: 'LEAVE',
+        leaveType: 'UNPAID',
+        quantity: 3,
+        description: 'Licencia no remunerada precisión Decimal E2E',
+      })
+      .expect(201);
+
+    precisionNoveltyId = noveltyResponse.body.id;
+
+    await request(app.getHttpServer())
+      .post('/payroll/calculate')
+      .set('Authorization', `Bearer ${ownerToken}`)
+      .send({
+        year: precisionPayrollYear,
+        month: precisionPayrollMonth,
+        payrollType: precisionPayrollType,
+      })
+      .expect(201);
+
+    const payrollItem = await prisma.payrollItem.findFirstOrThrow({
+      where: {
+        payrollPeriodId: precisionPeriodId,
+        employeeId: createdEmployeeId,
+      },
+      select: {
+        id: true,
+        baseSalary: true,
+        earnedTotal: true,
+        deductionsTotal: true,
+        netPay: true,
+      },
+    });
+
+    const baseSalaryConcept =
+      await prisma.payrollConceptDetail.findFirstOrThrow({
+        where: {
+          payrollItemId: payrollItem.id,
+          conceptCode: 'BASE_SALARY',
+        },
+        select: {
+          amount: true,
+        },
+      });
+
+    const transportAllowanceConcept =
+      await prisma.payrollConceptDetail.findFirstOrThrow({
+        where: {
+          payrollItemId: payrollItem.id,
+          conceptCode: 'TRANSPORT_ALLOWANCE',
+        },
+        select: {
+          amount: true,
+        },
+      });
+
+    /*
+     * El colaborador E2E gana $1.800.000 y tiene 3 días de licencia
+     * no remunerada:
+     *
+     * salario ordinario = 1.800.000 / 30 * 27 = 1.620.000
+     *
+     * auxilio transporte exacto:
+     * 249.095 / 30 * 27 = 224.185,5
+     * ROUND_HALF_UP = 224.186
+     *
+     * Con Number + Math.round la representación IEEE-754 anterior podía
+     * producir 224185.49999999997 y terminar incorrectamente en 224.185.
+     */
+    expect(payrollItem.baseSalary.toString()).toBe('1800000');
+
+    expect(baseSalaryConcept.amount.toString()).toBe('1620000');
+
+    expect(transportAllowanceConcept.amount.toString()).toBe('224186');
+
+    expect(payrollItem.earnedTotal.toString()).toBe('1844186');
+
+    expect(payrollItem.deductionsTotal.toString()).toBe('129600');
+
+    expect(payrollItem.netPay.toString()).toBe('1714586');
+  } finally {
+    const auditEntityIds = [
+      precisionPeriodId,
+      precisionNoveltyId,
+    ].filter((id): id is string => Boolean(id));
+
+    if (auditEntityIds.length > 0) {
+      await prisma.auditLog.deleteMany({
+        where: {
+          entityId: {
+            in: auditEntityIds,
+          },
+        },
+      });
+    }
+
+    if (precisionPeriodId) {
+      const items = await prisma.payrollItem.findMany({
+        where: {
+          payrollPeriodId: precisionPeriodId,
+        },
+        select: {
+          id: true,
+        },
+      });
+
+      const itemIds = items.map((item) => item.id);
+
+      if (itemIds.length > 0) {
+        await prisma.payrollConceptDetail.deleteMany({
+          where: {
+            payrollItemId: {
+              in: itemIds,
+            },
+          },
+        });
+      }
+
+      await prisma.payrollItem.deleteMany({
+        where: {
+          payrollPeriodId: precisionPeriodId,
+        },
+      });
+
+      await prisma.payrollNovelty.deleteMany({
+        where: {
+          payrollPeriodId: precisionPeriodId,
+        },
+      });
+
+      await prisma.payrollPeriod.deleteMany({
+        where: {
+          id: precisionPeriodId,
+        },
+      });
+    }
+  }
+});
+
   it('POST /payroll/calculate debe hacer rollback real si falla el audit en un primer cálculo', async () => {
   const employee = await prisma.employee.findUniqueOrThrow({
     where: {
