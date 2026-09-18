@@ -137,7 +137,8 @@ export class EmploymentTerminationsService {
       );
     }
 
-    const pendingVacationDays = dto.pendingVacationDays ?? 0;
+    const pendingVacationDaysInput = dto.pendingVacationDays ?? 0;
+    const pendingVacationDays = toDecimal(pendingVacationDaysInput);
     const baseSalary = toDecimal(termination.employee.baseSalary);
 
     const calculation = this.terminationPayrollCalculator.calculate({
@@ -162,7 +163,7 @@ export class EmploymentTerminationsService {
         },
         data: {
           unpaidSalaryStartDate,
-          pendingVacationDays,
+          pendingVacationDays: pendingVacationDays.toString(),
           calculatedBaseSalary: baseSalary.toString(),
           salaryDays: calculation.salaryDays,
           severanceDays: calculation.severanceDays,
@@ -222,7 +223,8 @@ export class EmploymentTerminationsService {
             salaryDays: calculation.salaryDays,
             severanceDays: calculation.severanceDays,
             serviceBonusDays: calculation.serviceBonusDays,
-            pendingVacationDays,
+            // Conserva el contrato numérico de auditoría sin reconvertir el Decimal.
+            pendingVacationDays: pendingVacationDaysInput,
             earnedTotal: calculation.earnedTotal.toString(),
             calculatedAt: calculatedAt.toISOString(),
           },

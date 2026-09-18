@@ -12,6 +12,26 @@ import { EmploymentTerminationsService } from './employment-terminations.service
 import { TerminationPayrollCalculator } from '../payroll/calculator/termination-payroll.calculator';
 import Decimal from 'decimal.js';
 
+type TerminationCalculation = ReturnType<
+  TerminationPayrollCalculator['calculate']
+>;
+
+// Los matchers de Jest son valores opacos, no valores del dominio.
+function containing(sample: Record<string, unknown>): unknown {
+  return expect.objectContaining(sample);
+}
+
+function decimalMatcher(): unknown {
+  return expect.any(Decimal);
+}
+
+// El callback del servicio ya devuelve una promesa.
+function transactionWith<TClient>(client: TClient) {
+  return <TResult>(
+    callback: (transaction: TClient) => Promise<TResult>,
+  ): Promise<TResult> => callback(client);
+}
+
 describe('EmploymentTerminationsService', () => {
   let service: EmploymentTerminationsService;
 
@@ -38,7 +58,9 @@ describe('EmploymentTerminationsService', () => {
   };
 
   const terminationPayrollCalculator = {
-    calculate: jest.fn(),
+    calculate: jest.fn() as jest.MockedFunction<
+      TerminationPayrollCalculator['calculate']
+    >,
   };
 
   const companyId = 'company-1';
@@ -80,45 +102,45 @@ describe('EmploymentTerminationsService', () => {
     pendingVacationDays: 7.5,
   };
 
-  const calculation = {
+  const calculation: TerminationCalculation = {
     salaryDays: 8,
     severanceDays: 248,
     serviceBonusDays: 68,
-    salary: 800000,
-    severance: 2500000,
-    serviceBonus: 600000,
-    vacation: 750000,
-    earnedTotal: 4650000,
+    salary: new Decimal('800000'),
+    severance: new Decimal('2500000'),
+    serviceBonus: new Decimal('600000'),
+    vacation: new Decimal('750000'),
+    earnedTotal: new Decimal('4650000'),
     concepts: [
       {
         code: 'BASE_SALARY',
         name: 'Salario ordinario',
         type: ConceptType.EARNING,
-        amount: 800000,
+        amount: new Decimal('800000'),
       },
       {
         code: 'SEVERANCE',
         name: 'Cesantías',
         type: ConceptType.EARNING,
-        amount: 2300000,
+        amount: new Decimal('2300000'),
       },
       {
         code: 'SEVERANCE_INTEREST',
         name: 'Intereses de cesantías',
         type: ConceptType.EARNING,
-        amount: 200000,
+        amount: new Decimal('200000'),
       },
       {
         code: 'SERVICE_BONUS',
         name: 'Prima de servicios',
         type: ConceptType.EARNING,
-        amount: 600000,
+        amount: new Decimal('600000'),
       },
       {
         code: 'TERMINATION_VACATION',
         name: 'Vacaciones pendientes',
         type: ConceptType.EARNING,
-        amount: 750000,
+        amount: new Decimal('750000'),
       },
     ],
   };
@@ -198,7 +220,7 @@ describe('EmploymentTerminationsService', () => {
     expect(prisma.employmentTermination.create).toHaveBeenCalled();
 
     expect(auditService.log).toHaveBeenCalledWith(
-      expect.objectContaining({
+      containing({
         companyId,
         userId,
         action: 'CREATE_EMPLOYMENT_TERMINATION',
@@ -385,7 +407,7 @@ describe('EmploymentTerminationsService', () => {
       },
     };
 
-    prisma.$transaction.mockImplementation(async (callback) => callback(tx));
+    prisma.$transaction.mockImplementation(transactionWith(tx));
 
     auditService.log.mockResolvedValue({});
 
@@ -397,11 +419,11 @@ describe('EmploymentTerminationsService', () => {
     );
 
     expect(terminationPayrollCalculator.calculate).toHaveBeenCalledWith({
-      baseSalary: expect.any(Decimal),
+      baseSalary: decimalMatcher(),
       employeeStartDate: employee.startDate,
       terminationDate: termination.terminationDate,
       unpaidSalaryStartDate: new Date('2026-09-01T00:00:00.000Z'),
-      pendingVacationDays: 7.5,
+      pendingVacationDays: decimalMatcher(),
     });
 
     const terminationInput =
@@ -409,6 +431,8 @@ describe('EmploymentTerminationsService', () => {
 
     expect(Decimal.isDecimal(terminationInput.baseSalary)).toBe(true);
     expect(terminationInput.baseSalary.toString()).toBe('3000000');
+    expect(Decimal.isDecimal(terminationInput.pendingVacationDays)).toBe(true);
+    expect(terminationInput.pendingVacationDays.toString()).toBe('7.5');
 
     expect(tx.employmentTermination.updateMany).toHaveBeenCalledWith({
       where: {
@@ -419,8 +443,8 @@ describe('EmploymentTerminationsService', () => {
           in: [TerminationStatus.DRAFT, TerminationStatus.CALCULATED],
         },
       },
-      data: expect.objectContaining({
-        pendingVacationDays: 7.5,
+      data: containing({
+        pendingVacationDays: '7.5',
         calculatedBaseSalary: '3000000',
         salaryDays: 8,
         severanceDays: 248,
@@ -446,6 +470,68 @@ describe('EmploymentTerminationsService', () => {
     expect(result).toBeDefined();
   });
 
+  it.each([
+    { label: 'omitted', input: undefined, expected: '0' },
+    { label: 'zero', input: 0, expected: '0' },
+    { label: 'fractional', input: 0.1, expected: '0.1' },
+  ])(
+    'should normalize $label vacation days and preserve persistence and audit contracts',
+    async ({ input, expected }) => {
+      const termination = buildTermination();
+      prisma.employmentTermination.findFirst.mockResolvedValue(termination);
+      terminationPayrollCalculator.calculate.mockReturnValue(calculation);
+
+      const tx = {
+        employmentTermination: {
+          updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+        },
+        employmentTerminationConcept: {
+          deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
+          createMany: jest.fn().mockResolvedValue({
+            count: calculation.concepts.length,
+          }),
+        },
+        auditLog: {
+          create: jest.fn(),
+        },
+      };
+
+      prisma.$transaction.mockImplementation(transactionWith(tx));
+      auditService.log.mockResolvedValue({});
+
+      await service.calculate(companyId, userId, termination.id, {
+        unpaidSalaryStartDate: calculateDto.unpaidSalaryStartDate,
+        ...(input === undefined ? {} : { pendingVacationDays: input }),
+      });
+
+      expect(terminationPayrollCalculator.calculate).toHaveBeenCalledTimes(1);
+      expect(terminationPayrollCalculator.calculate).toHaveBeenCalledWith(
+        containing({
+          pendingVacationDays: decimalMatcher(),
+        }),
+      );
+
+      const calculationInput =
+        terminationPayrollCalculator.calculate.mock.calls[0][0];
+      expect(calculationInput.pendingVacationDays.toString()).toBe(expected);
+
+      expect(tx.employmentTermination.updateMany).toHaveBeenCalledWith(
+        containing({
+          data: containing({ pendingVacationDays: expected }),
+        }),
+      );
+      expect(auditService.log).toHaveBeenCalledWith(
+        containing({
+          action: 'CALCULATE_EMPLOYMENT_TERMINATION',
+          newValue: containing({
+            pendingVacationDays: input ?? 0,
+          }),
+        }),
+        tx,
+      );
+    },
+  );
+
   it('should allow recalculating a calculated termination and replace old concepts', async () => {
     const termination = buildTermination(TerminationStatus.CALCULATED);
 
@@ -470,7 +556,7 @@ describe('EmploymentTerminationsService', () => {
       },
     };
 
-    prisma.$transaction.mockImplementation(async (callback) => callback(tx));
+    prisma.$transaction.mockImplementation(transactionWith(tx));
 
     await service.calculate(companyId, userId, termination.id, calculateDto);
 
@@ -483,7 +569,7 @@ describe('EmploymentTerminationsService', () => {
           in: [TerminationStatus.DRAFT, TerminationStatus.CALCULATED],
         },
       },
-      data: expect.objectContaining({
+      data: containing({
         status: TerminationStatus.CALCULATED,
         version: {
           increment: 1,
@@ -608,17 +694,18 @@ describe('EmploymentTerminationsService', () => {
       },
     };
 
-    prisma.$transaction.mockImplementation(async (callback) => callback(tx));
+    prisma.$transaction.mockImplementation(transactionWith(tx));
 
     await service.calculate(companyId, userId, termination.id, calculateDto);
 
     expect(auditService.log).toHaveBeenCalledWith(
-      expect.objectContaining({
+      containing({
         companyId,
         userId,
         action: 'CALCULATE_EMPLOYMENT_TERMINATION',
         entity: 'EmploymentTermination',
         entityId: termination.id,
+        newValue: containing({ pendingVacationDays: 7.5 }),
       }),
       tx,
     );
@@ -647,7 +734,7 @@ describe('EmploymentTerminationsService', () => {
       },
     };
 
-    prisma.$transaction.mockImplementation(async (callback) => callback(tx));
+    prisma.$transaction.mockImplementation(transactionWith(tx));
 
     await expect(
       service.calculate(companyId, userId, termination.id, calculateDto),
@@ -662,7 +749,7 @@ describe('EmploymentTerminationsService', () => {
           in: [TerminationStatus.DRAFT, TerminationStatus.CALCULATED],
         },
       },
-      data: expect.objectContaining({
+      data: containing({
         status: TerminationStatus.CALCULATED,
         version: {
           increment: 1,
@@ -703,7 +790,7 @@ describe('EmploymentTerminationsService', () => {
       },
     };
 
-    prisma.$transaction.mockImplementation(async (callback) => callback(tx));
+    prisma.$transaction.mockImplementation(transactionWith(tx));
 
     const result = await service.approve(companyId, userId, termination.id);
 
@@ -764,15 +851,13 @@ describe('EmploymentTerminationsService', () => {
       .mockResolvedValueOnce(termination)
       .mockResolvedValueOnce(closedTermination);
 
-    prisma.$transaction.mockImplementation(async (callback) => {
-      return callback(closeTx);
-    });
+    prisma.$transaction.mockImplementation(transactionWith(closeTx));
 
     const result = await service.close(companyId, userId, 'termination-1');
 
     expect(prisma.employmentTermination.findFirst).toHaveBeenNthCalledWith(
       1,
-      expect.objectContaining({
+      containing({
         where: {
           id: 'termination-1',
           companyId,
@@ -829,7 +914,7 @@ describe('EmploymentTerminationsService', () => {
       },
     };
 
-    prisma.$transaction.mockImplementation(async (callback) => callback(tx));
+    prisma.$transaction.mockImplementation(transactionWith(tx));
 
     await service.approve(companyId, userId, termination.id);
 
@@ -872,7 +957,7 @@ describe('EmploymentTerminationsService', () => {
       },
     };
 
-    prisma.$transaction.mockImplementation(async (callback) => callback(tx));
+    prisma.$transaction.mockImplementation(transactionWith(tx));
 
     await expect(
       service.approve(companyId, userId, termination.id),
@@ -937,7 +1022,7 @@ describe('EmploymentTerminationsService', () => {
       },
     };
 
-    prisma.$transaction.mockImplementation(async (callback) => callback(tx));
+    prisma.$transaction.mockImplementation(transactionWith(tx));
 
     await expect(
       service.approve(companyId, userId, termination.id),
@@ -1087,7 +1172,7 @@ describe('EmploymentTerminationsService', () => {
     ).rejects.toThrow(NotFoundException);
 
     expect(prisma.employmentTermination.findFirst).toHaveBeenCalledWith(
-      expect.objectContaining({
+      containing({
         where: {
           id: 'termination-1',
           companyId,
@@ -1134,24 +1219,22 @@ describe('EmploymentTerminationsService', () => {
       .mockResolvedValueOnce(termination)
       .mockResolvedValueOnce(closedTermination);
 
-    prisma.$transaction.mockImplementation(async (callback) => {
-      return callback(closeTx);
-    });
+    prisma.$transaction.mockImplementation(transactionWith(closeTx));
 
     await service.close(companyId, userId, 'termination-1');
 
     expect(auditService.log).toHaveBeenCalledWith(
-      expect.objectContaining({
+      containing({
         companyId,
         userId,
         action: 'CLOSE_EMPLOYMENT_TERMINATION',
         entity: 'EmploymentTermination',
         entityId: 'termination-1',
-        oldValue: expect.objectContaining({
+        oldValue: containing({
           status: TerminationStatus.APPROVED,
           employeeStatus: EmployeeStatus.ACTIVE,
         }),
-        newValue: expect.objectContaining({
+        newValue: containing({
           status: TerminationStatus.CLOSED,
           employeeStatus: EmployeeStatus.INACTIVE,
         }),
@@ -1183,7 +1266,7 @@ describe('EmploymentTerminationsService', () => {
       },
     };
 
-    prisma.$transaction.mockImplementation(async (callback) => callback(tx));
+    prisma.$transaction.mockImplementation(transactionWith(tx));
 
     await expect(
       service.close(companyId, userId, termination.id),
@@ -1227,7 +1310,7 @@ describe('EmploymentTerminationsService', () => {
       },
     };
 
-    prisma.$transaction.mockImplementation(async (callback) => callback(tx));
+    prisma.$transaction.mockImplementation(transactionWith(tx));
 
     await expect(
       service.close(companyId, userId, termination.id),

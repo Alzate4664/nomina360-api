@@ -12,7 +12,7 @@ interface TerminationPayrollInput {
   employeeStartDate: Date;
   terminationDate: Date;
   unpaidSalaryStartDate: Date;
-  pendingVacationDays: number;
+  pendingVacationDays: Decimal;
 }
 
 @Injectable()

@@ -48,7 +48,7 @@ describe('TerminationPayrollCalculator', () => {
       employeeStartDate: new Date('2025-01-01T00:00:00.000Z'),
       terminationDate: new Date('2026-09-08T00:00:00.000Z'),
       unpaidSalaryStartDate: new Date('2026-09-01T00:00:00.000Z'),
-      pendingVacationDays: 0,
+      pendingVacationDays: new Decimal('0'),
     });
 
     expect(result.salaryDays).toBe(8);
@@ -63,7 +63,7 @@ describe('TerminationPayrollCalculator', () => {
       employeeStartDate: new Date('2024-01-01T00:00:00.000Z'),
       terminationDate: new Date('2026-09-08T00:00:00.000Z'),
       unpaidSalaryStartDate: new Date('2026-09-01T00:00:00.000Z'),
-      pendingVacationDays: 0,
+      pendingVacationDays: new Decimal('0'),
     });
 
     expect(result.severanceDays).toBe(248);
@@ -77,7 +77,7 @@ describe('TerminationPayrollCalculator', () => {
       employeeStartDate: new Date('2024-01-01T00:00:00.000Z'),
       terminationDate: new Date('2026-09-08T00:00:00.000Z'),
       unpaidSalaryStartDate: new Date('2026-09-01T00:00:00.000Z'),
-      pendingVacationDays: 0,
+      pendingVacationDays: new Decimal('0'),
     });
 
     expect(result.serviceBonusDays).toBe(68);
@@ -91,7 +91,7 @@ describe('TerminationPayrollCalculator', () => {
       employeeStartDate: new Date('2026-07-15T00:00:00.000Z'),
       terminationDate: new Date('2026-09-08T00:00:00.000Z'),
       unpaidSalaryStartDate: new Date('2026-09-01T00:00:00.000Z'),
-      pendingVacationDays: 0,
+      pendingVacationDays: new Decimal('0'),
     });
 
     expect(result.serviceBonusDays).toBe(54);
@@ -103,7 +103,7 @@ describe('TerminationPayrollCalculator', () => {
       employeeStartDate: new Date('2025-01-01T00:00:00.000Z'),
       terminationDate: new Date('2026-09-08T00:00:00.000Z'),
       unpaidSalaryStartDate: new Date('2026-09-01T00:00:00.000Z'),
-      pendingVacationDays: 7.5,
+      pendingVacationDays: new Decimal('7.5'),
     });
 
     expect(Decimal.isDecimal(result.vacation)).toBe(true);
@@ -124,7 +124,7 @@ describe('TerminationPayrollCalculator', () => {
       employeeStartDate: new Date('2025-01-01T00:00:00.000Z'),
       terminationDate: new Date('2026-09-08T00:00:00.000Z'),
       unpaidSalaryStartDate: new Date('2026-09-01T00:00:00.000Z'),
-      pendingVacationDays: 7.5,
+      pendingVacationDays: new Decimal('7.5'),
     });
 
     const codes = result.concepts.map((concept) => concept.code);
@@ -138,5 +138,24 @@ describe('TerminationPayrollCalculator', () => {
     expect(
       result.concepts.every((concept) => Decimal.isDecimal(concept.amount)),
     ).toBe(true);
+  });
+
+  it('should preserve high-precision vacation days through the calculation chain', () => {
+    const result = calculator.calculate({
+      baseSalary: new Decimal('3000000'),
+      employeeStartDate: new Date('2025-01-01T00:00:00.000Z'),
+      terminationDate: new Date('2026-09-08T00:00:00.000Z'),
+      unpaidSalaryStartDate: new Date('2026-09-01T00:00:00.000Z'),
+      pendingVacationDays: new Decimal('0.10000000000000001'),
+    });
+
+    expect(Decimal.isDecimal(result.vacation)).toBe(true);
+    expect(result.vacation.toString()).toBe('10000.000000000001');
+
+    const concept = result.concepts.find(
+      (item) => item.code === 'TERMINATION_VACATION',
+    );
+    expect(concept).toBeDefined();
+    expect(concept?.amount.toString()).toBe('10000.000000000001');
   });
 });

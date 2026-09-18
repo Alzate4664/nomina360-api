@@ -5,8 +5,8 @@ import { PayrollConceptAmount } from '../../money/payroll-money.types';
 
 @Injectable()
 export class TerminationVacationCalculator {
-  calculate(baseSalary: Decimal, pendingVacationDays: number) {
-    if (baseSalary.lte(0) || pendingVacationDays <= 0) {
+  calculate(baseSalary: Decimal, pendingVacationDays: Decimal) {
+    if (baseSalary.lte(0) || pendingVacationDays.lte(0)) {
       return {
         earned: new Decimal(0),
         concepts: [] as PayrollConceptAmount[],
