@@ -1,8 +1,4 @@
-import {
-  LeaveType,
-  PayrollNovelty,
-  Prisma,
-} from '@prisma/client';
+import { LeaveType, PayrollNovelty, Prisma } from '@prisma/client';
 import Decimal from 'decimal.js';
 import { LeaveCalculator } from './leave.calculator';
 

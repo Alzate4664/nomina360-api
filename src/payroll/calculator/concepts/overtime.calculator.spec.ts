@@ -25,12 +25,7 @@ describe('OvertimeCalculator', () => {
 
   it('should calculate daytime overtime using the configured multiplier', () => {
     const result = calculator.calculate(new Decimal('2100000'), [
-      createOvertime(
-        'OVERTIME',
-        'REGULAR',
-        '2',
-        '2 horas extra diurnas',
-      ),
+      createOvertime('OVERTIME', 'REGULAR', '2', '2 horas extra diurnas'),
     ]);
 
     expect(Decimal.isDecimal(result.earned)).toBe(true);
@@ -86,12 +81,7 @@ describe('OvertimeCalculator', () => {
 
   it('should preserve fractional overtime hours exactly', () => {
     const result = calculator.calculate(new Decimal('2100000'), [
-      createOvertime(
-        'OVERTIME',
-        'REGULAR',
-        '1.5',
-        'Hora extra fraccionaria',
-      ),
+      createOvertime('OVERTIME', 'REGULAR', '1.5', 'Hora extra fraccionaria'),
     ]);
 
     expect(Decimal.isDecimal(result.earned)).toBe(true);

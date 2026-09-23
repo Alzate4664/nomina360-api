@@ -268,9 +268,7 @@ describe('PayrollCalculatorService', () => {
     );
 
     expect(result.earnedTotal.toString()).toBe(
-      new Decimal('2700000')
-        .plus(expectedTransportAllowance)
-        .toString(),
+      new Decimal('2700000').plus(expectedTransportAllowance).toString(),
     );
   });
 

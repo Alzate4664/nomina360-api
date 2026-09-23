@@ -20,10 +20,9 @@ describe('AbsenceCalculator', () => {
     }) as unknown as PayrollNovelty;
 
   it('should calculate absence deduction as Decimal', () => {
-    const result = calculator.calculate(
-      new Decimal('100000'),
-      [createAbsence('3')],
-    );
+    const result = calculator.calculate(new Decimal('100000'), [
+      createAbsence('3'),
+    ]);
 
     expect(Decimal.isDecimal(result.deductions)).toBe(true);
     expect(result.deductions.toString()).toBe('300000');
@@ -38,10 +37,9 @@ describe('AbsenceCalculator', () => {
   });
 
   it('should preserve fractional absence quantities exactly', () => {
-    const result = calculator.calculate(
-      new Decimal('23345.4'),
-      [createAbsence('1.5')],
-    );
+    const result = calculator.calculate(new Decimal('23345.4'), [
+      createAbsence('1.5'),
+    ]);
 
     expect(result.deductions.toString()).toBe('35018.1');
     expect(Decimal.isDecimal(result.concepts[0].amount)).toBe(true);

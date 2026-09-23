@@ -23,11 +23,7 @@ describe('SundayHolidayCalculator', () => {
 
   it('should calculate sunday surcharge using the configured rate', () => {
     const result = calculator.calculate(new Decimal('2100000'), [
-      createSurcharge(
-        'SUNDAY_SURCHARGE',
-        '2',
-        '2 horas dominicales',
-      ),
+      createSurcharge('SUNDAY_SURCHARGE', '2', '2 horas dominicales'),
     ]);
 
     expect(Decimal.isDecimal(result.earned)).toBe(true);
@@ -45,11 +41,7 @@ describe('SundayHolidayCalculator', () => {
 
   it('should calculate holiday surcharge using the configured rate', () => {
     const result = calculator.calculate(new Decimal('2100000'), [
-      createSurcharge(
-        'HOLIDAY_SURCHARGE',
-        '2',
-        '2 horas festivas',
-      ),
+      createSurcharge('HOLIDAY_SURCHARGE', '2', '2 horas festivas'),
     ]);
 
     expect(result.earned.toString()).toBe('18000');

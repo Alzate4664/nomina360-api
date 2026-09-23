@@ -57,13 +57,15 @@ describe('CalculatePayrollUseCase', () => {
     },
   };
 
-  const payrollCalculatorMock = {
-    calculate: jest.fn(),
-  };
+  const payrollCalculateMock: jest.MockedFunction<
+    PayrollCalculatorService['calculate']
+  > = jest.fn();
+  const payrollCalculatorMock = { calculate: payrollCalculateMock };
 
-  const severancePayrollCalculatorMock = {
-    calculate: jest.fn(),
-  };
+  const severanceCalculateMock: jest.MockedFunction<
+    SeverancePayrollCalculator['calculate']
+  > = jest.fn();
+  const severancePayrollCalculatorMock = { calculate: severanceCalculateMock };
 
   const accruedDaysCalculatorMock = {
     calculate: jest.fn(),
@@ -73,8 +75,11 @@ describe('CalculatePayrollUseCase', () => {
     log: jest.fn(),
   };
 
+  const serviceBonusCalculateMock: jest.MockedFunction<
+    ServiceBonusPayrollCalculator['calculate']
+  > = jest.fn();
   const serviceBonusPayrollCalculatorMock = {
-    calculate: jest.fn(),
+    calculate: serviceBonusCalculateMock,
   };
 
   beforeEach(async () => {
@@ -173,32 +178,28 @@ describe('CalculatePayrollUseCase', () => {
 
   it('should use regular payroll calculator for monthly payroll', async () => {
     payrollCalculatorMock.calculate.mockReturnValue({
-      earnedTotal: 3000000,
-      deductionsTotal: 240000,
-      netPay: 2760000,
+      earnedTotal: new Decimal('3000000'),
+      deductionsTotal: new Decimal('240000'),
+      netPay: new Decimal('2760000'),
       concepts: [
         {
           code: 'BASE_SALARY',
           name: 'Salario ordinario',
           type: 'EARNING',
-          amount: 3000000,
+          amount: new Decimal('3000000'),
         },
       ],
     });
 
     await useCase.execute('company-1', 'user-1', 2026, 12, PayrollType.MONTHLY);
 
-    expect(payrollCalculatorMock.calculate).toHaveBeenCalledWith({
-      baseSalary: expect.any(Decimal),
-      workedDays: 30,
-      novelties: [],
-    });
-
-    const regularPayrollInput =
-      payrollCalculatorMock.calculate.mock.calls[0][0];
+    expect(payrollCalculateMock).toHaveBeenCalledTimes(1);
+    const [regularPayrollInput] = payrollCalculateMock.mock.calls[0];
 
     expect(Decimal.isDecimal(regularPayrollInput.baseSalary)).toBe(true);
     expect(regularPayrollInput.baseSalary.toString()).toBe('3000000');
+    expect(regularPayrollInput.workedDays).toBe(30);
+    expect(regularPayrollInput.novelties).toEqual([]);
 
     expect(prismaMock.$transaction).toHaveBeenCalledTimes(1);
     expect(severancePayrollCalculatorMock.calculate).not.toHaveBeenCalled();
@@ -228,22 +229,22 @@ describe('CalculatePayrollUseCase', () => {
     accruedDaysCalculatorMock.calculate.mockReturnValue(360);
 
     severancePayrollCalculatorMock.calculate.mockReturnValue({
-      severanceBase: 3000000,
-      earnedTotal: 3360000,
-      deductionsTotal: 0,
-      netPay: 3360000,
+      severanceBase: new Decimal('3000000'),
+      earnedTotal: new Decimal('3360000'),
+      deductionsTotal: new Decimal(0),
+      netPay: new Decimal('3360000'),
       concepts: [
         {
           code: 'SEVERANCE',
           name: 'Cesantías',
           type: 'EARNING',
-          amount: 3000000,
+          amount: new Decimal('3000000'),
         },
         {
           code: 'SEVERANCE_INTEREST',
           name: 'Intereses de cesantías',
           type: 'EARNING',
-          amount: 360000,
+          amount: new Decimal('360000'),
         },
       ],
     });
@@ -262,16 +263,12 @@ describe('CalculatePayrollUseCase', () => {
       12,
     );
 
-    expect(severancePayrollCalculatorMock.calculate).toHaveBeenCalledWith({
-      baseSalary: expect.any(Decimal),
-      accruedDays: 360,
-    });
-
-    const severanceInput =
-      severancePayrollCalculatorMock.calculate.mock.calls[0][0];
+    expect(severanceCalculateMock).toHaveBeenCalledTimes(1);
+    const [severanceInput] = severanceCalculateMock.mock.calls[0];
 
     expect(Decimal.isDecimal(severanceInput.baseSalary)).toBe(true);
     expect(severanceInput.baseSalary.toString()).toBe('3000000');
+    expect(severanceInput.accruedDays).toBe(360);
 
     expect(prismaMock.$transaction).toHaveBeenCalledTimes(1);
     expect(payrollCalculatorMock.calculate).not.toHaveBeenCalled();
@@ -337,15 +334,15 @@ describe('CalculatePayrollUseCase', () => {
     accruedDaysCalculatorMock.calculate.mockReturnValue(180);
 
     serviceBonusPayrollCalculatorMock.calculate.mockReturnValue({
-      earnedTotal: 1500000,
-      deductionsTotal: 0,
-      netPay: 1500000,
+      earnedTotal: new Decimal('1500000'),
+      deductionsTotal: new Decimal(0),
+      netPay: new Decimal('1500000'),
       concepts: [
         {
           code: 'SERVICE_BONUS',
           name: 'Prima de servicios',
           type: 'EARNING',
-          amount: 1500000,
+          amount: new Decimal('1500000'),
         },
       ],
     });
@@ -359,16 +356,12 @@ describe('CalculatePayrollUseCase', () => {
       1,
     );
 
-    expect(serviceBonusPayrollCalculatorMock.calculate).toHaveBeenCalledWith({
-      baseSalary: expect.any(Decimal),
-      accruedDays: 180,
-    });
-
-    const serviceBonusInput =
-      serviceBonusPayrollCalculatorMock.calculate.mock.calls[0][0];
+    expect(serviceBonusCalculateMock).toHaveBeenCalledTimes(1);
+    const [serviceBonusInput] = serviceBonusCalculateMock.mock.calls[0];
 
     expect(Decimal.isDecimal(serviceBonusInput.baseSalary)).toBe(true);
     expect(serviceBonusInput.baseSalary.toString()).toBe('3000000');
+    expect(serviceBonusInput.accruedDays).toBe(180);
 
     expect(payrollCalculatorMock.calculate).not.toHaveBeenCalled();
     expect(severancePayrollCalculatorMock.calculate).not.toHaveBeenCalled();
@@ -398,9 +391,9 @@ describe('CalculatePayrollUseCase', () => {
     accruedDaysCalculatorMock.calculate.mockReturnValue(180);
 
     serviceBonusPayrollCalculatorMock.calculate.mockReturnValue({
-      earnedTotal: 1500000,
-      deductionsTotal: 0,
-      netPay: 1500000,
+      earnedTotal: new Decimal('1500000'),
+      deductionsTotal: new Decimal(0),
+      netPay: new Decimal('1500000'),
       concepts: [],
     });
 
@@ -426,15 +419,15 @@ describe('CalculatePayrollUseCase', () => {
   describe('transaction safety', () => {
     beforeEach(() => {
       payrollCalculatorMock.calculate.mockReturnValue({
-        earnedTotal: 3000000,
-        deductionsTotal: 240000,
-        netPay: 2760000,
+        earnedTotal: new Decimal('3000000'),
+        deductionsTotal: new Decimal('240000'),
+        netPay: new Decimal('2760000'),
         concepts: [
           {
             code: 'BASE_SALARY',
             name: 'Salario ordinario',
             type: 'EARNING',
-            amount: 3000000,
+            amount: new Decimal('3000000'),
           },
         ],
       });
@@ -497,21 +490,25 @@ describe('CalculatePayrollUseCase', () => {
         PayrollType.MONTHLY,
       );
 
-      expect(auditServiceMock.log).toHaveBeenCalledWith(
-        expect.objectContaining({
-          companyId: 'company-1',
-          userId: 'user-1',
-          action: 'CALCULATE_PAYROLL',
-          entity: 'PayrollPeriod',
-          entityId: 'period-1',
-          newValue: expect.objectContaining({
-            year: 2026,
-            month: 12,
-            status: PayrollStatus.CALCULATED,
-          }),
-        }),
-        tx,
-      );
+      expect(auditServiceMock.log).toHaveBeenCalledTimes(1);
+      const [auditData, auditClient] = auditServiceMock.log.mock.calls[0] as [
+        Parameters<AuditService['log']>[0],
+        typeof tx,
+      ];
+
+      expect(auditData).toMatchObject({
+        companyId: 'company-1',
+        userId: 'user-1',
+        action: 'CALCULATE_PAYROLL',
+        entity: 'PayrollPeriod',
+        entityId: 'period-1',
+      });
+      expect(auditData.newValue).toMatchObject({
+        year: 2026,
+        month: 12,
+        status: PayrollStatus.CALCULATED,
+      });
+      expect(auditClient).toBe(tx);
     });
 
     it('should use tx for all persistence writes', async () => {

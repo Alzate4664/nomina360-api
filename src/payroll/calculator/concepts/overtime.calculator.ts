@@ -8,9 +8,7 @@ import { PAYROLL_RATES } from '../config/payroll-rates.config';
 @Injectable()
 export class OvertimeCalculator {
   calculate(baseSalary: Decimal, novelties: PayrollNovelty[]) {
-    const hourlyRate = baseSalary.dividedBy(
-      PAYROLL_RATES.standardMonthlyHours,
-    );
+    const hourlyRate = baseSalary.dividedBy(PAYROLL_RATES.standardMonthlyHours);
 
     let earned = new Decimal(0);
 

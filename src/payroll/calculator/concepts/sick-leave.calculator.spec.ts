@@ -119,12 +119,7 @@ describe('SickLeaveCalculator', () => {
 
   it('should use sick leave IBC instead of employee base salary', () => {
     const result = calculator.calculate([
-      createSickLeave(
-        SickLeaveOrigin.WORK_ACCIDENT,
-        1,
-        '3',
-        '4500000',
-      ),
+      createSickLeave(SickLeaveOrigin.WORK_ACCIDENT, 1, '3', '4500000'),
     ]);
 
     expect(result.earned.toString()).toBe('450000');
@@ -132,12 +127,7 @@ describe('SickLeaveCalculator', () => {
 
   it('should preserve exact decimal IBC arithmetic', () => {
     const result = calculator.calculate([
-      createSickLeave(
-        SickLeaveOrigin.WORK_ACCIDENT,
-        1,
-        '3',
-        '23345.4',
-      ),
+      createSickLeave(SickLeaveOrigin.WORK_ACCIDENT, 1, '3', '23345.4'),
     ]);
 
     expect(result.earned.toString()).toBe('2334.54');

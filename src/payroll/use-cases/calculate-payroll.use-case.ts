@@ -196,9 +196,9 @@ export class CalculatePayrollUseCase {
       // a) Claim the period using optimistic concurrency control.
       const transition = await tx.payrollPeriod.updateMany({
         where: {
-          id: period!.id,
+          id: period.id,
           companyId,
-          version: period!.version,
+          version: period.version,
           status: {
             in: allowedStatuses,
           },
@@ -270,18 +270,18 @@ export class CalculatePayrollUseCase {
           userId: currentUserId,
           action: 'CALCULATE_PAYROLL',
           entity: 'PayrollPeriod',
-          entityId: period!.id,
+          entityId: period.id,
           newValue: {
             year,
             month,
             status: PayrollStatus.CALCULATED,
-            version: period!.version + 1,
+            version: period.version + 1,
           },
         },
         tx,
       );
     });
 
-    return period!.id;
+    return period.id;
   }
 }

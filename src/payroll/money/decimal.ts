@@ -1,10 +1,6 @@
 import Decimal from 'decimal.js';
 
-export type DecimalSource =
-  | string
-  | number
-  | Decimal
-  | { toString(): string };
+export type DecimalSource = string | number | Decimal | { toString(): string };
 
 export function toDecimal(value: DecimalSource): Decimal {
   if (Decimal.isDecimal(value)) {
