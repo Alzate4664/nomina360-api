@@ -1,4 +1,4 @@
-import { BadRequestException } from '@nestjs/common';
+import { BadRequestException, ConflictException } from '@nestjs/common';
 import {
   LeaveType,
   NoveltyType,
@@ -19,6 +19,7 @@ describe('PayrollNoveltiesService', () => {
     },
     payrollPeriod: {
       findFirst: jest.fn(),
+      updateMany: jest.fn(),
     },
     payrollNovelty: {
       create: jest.fn(),
@@ -27,12 +28,22 @@ describe('PayrollNoveltiesService', () => {
       findFirst: jest.fn(),
       delete: jest.fn(),
     },
+    payrollItem: {
+      findMany: jest.fn(),
+      deleteMany: jest.fn(),
+    },
+    payrollConceptDetail: {
+      deleteMany: jest.fn(),
+    },
     $transaction: jest.fn(),
   };
 
   const auditServiceMock = {
     log: jest.fn(),
   };
+
+  type PrismaMock = typeof prismaMock;
+  type TransactionCallback = (tx: PrismaMock) => Promise<unknown>;
 
   beforeEach(async () => {
     jest.clearAllMocks();
@@ -53,6 +64,10 @@ describe('PayrollNoveltiesService', () => {
 
     service = module.get<PayrollNoveltiesService>(PayrollNoveltiesService);
 
+    prismaMock.$transaction.mockImplementation(
+      async (callback: TransactionCallback) => callback(prismaMock),
+    );
+
     prismaMock.employee.findFirst.mockResolvedValue({
       id: 'employee-1',
       companyId: 'company-1',
@@ -63,7 +78,13 @@ describe('PayrollNoveltiesService', () => {
       id: 'period-1',
       companyId: 'company-1',
       status: PayrollStatus.DRAFT,
+      version: 0,
     });
+    prismaMock.payrollPeriod.updateMany.mockResolvedValue({ count: 1 });
+    prismaMock.payrollItem.findMany.mockResolvedValue([]);
+    prismaMock.payrollItem.deleteMany.mockResolvedValue({ count: 0 });
+    prismaMock.payrollConceptDetail.deleteMany.mockResolvedValue({ count: 0 });
+    auditServiceMock.log.mockResolvedValue({ id: 'audit-1' });
   });
 
   it('should be defined', () => {
@@ -179,14 +200,17 @@ describe('PayrollNoveltiesService', () => {
       },
     });
 
-    expect(auditServiceMock.log).toHaveBeenCalledWith({
-      companyId: 'company-1',
-      userId: 'user-1',
-      action: 'CREATE_PAYROLL_NOVELTY',
-      entity: 'PayrollNovelty',
-      entityId: 'novelty-1',
-      newValue: createdNovelty,
-    });
+    expect(auditServiceMock.log).toHaveBeenCalledWith(
+      {
+        companyId: 'company-1',
+        userId: 'user-1',
+        action: 'CREATE_PAYROLL_NOVELTY',
+        entity: 'PayrollNovelty',
+        entityId: 'novelty-1',
+        newValue: createdNovelty,
+      },
+      prismaMock,
+    );
 
     expect(result).toEqual(createdNovelty);
   });
@@ -314,5 +338,241 @@ describe('PayrollNoveltiesService', () => {
     });
 
     expect(result).toEqual(createdNovelty);
+  });
+
+  it('should move a draft period to collecting novelties and increment its version', async () => {
+    const createdNovelty = {
+      id: 'bonus-1',
+      companyId: 'company-1',
+      employeeId: 'employee-1',
+      payrollPeriodId: 'period-1',
+      type: NoveltyType.BONUS,
+      amount: 100000,
+      createdAt: new Date(),
+    };
+    prismaMock.payrollNovelty.create.mockResolvedValue(createdNovelty);
+
+    await service.create('company-1', 'user-1', {
+      employeeId: 'employee-1',
+      payrollPeriodId: 'period-1',
+      type: NoveltyType.BONUS,
+      amount: 100000,
+    });
+
+    expect(prismaMock.payrollPeriod.updateMany).toHaveBeenCalledWith({
+      where: {
+        id: 'period-1',
+        companyId: 'company-1',
+        version: 0,
+        status: {
+          in: [
+            PayrollStatus.DRAFT,
+            PayrollStatus.COLLECTING_NOVELTIES,
+            PayrollStatus.CALCULATED,
+            PayrollStatus.REOPENED,
+          ],
+        },
+      },
+      data: {
+        status: PayrollStatus.COLLECTING_NOVELTIES,
+        version: {
+          increment: 1,
+        },
+      },
+    });
+
+    expect(auditServiceMock.log).toHaveBeenCalledWith(
+      {
+        companyId: 'company-1',
+        userId: 'user-1',
+        action: 'PREPARE_PAYROLL_FOR_NOVELTY_CHANGE',
+        entity: 'PayrollPeriod',
+        entityId: 'period-1',
+        oldValue: {
+          status: PayrollStatus.DRAFT,
+          version: 0,
+        },
+        newValue: {
+          status: PayrollStatus.COLLECTING_NOVELTIES,
+          version: 1,
+        },
+      },
+      prismaMock,
+    );
+  });
+
+  it('should invalidate persisted calculation when a calculated period receives a novelty', async () => {
+    prismaMock.payrollPeriod.findFirst.mockResolvedValue({
+      id: 'period-1',
+      companyId: 'company-1',
+      status: PayrollStatus.CALCULATED,
+      version: 4,
+    });
+    prismaMock.payrollItem.findMany.mockResolvedValue([
+      { id: 'item-1' },
+      { id: 'item-2' },
+    ]);
+    prismaMock.payrollNovelty.create.mockResolvedValue({
+      id: 'bonus-1',
+      companyId: 'company-1',
+      employeeId: 'employee-1',
+      payrollPeriodId: 'period-1',
+      type: NoveltyType.BONUS,
+      amount: 100000,
+      createdAt: new Date(),
+    });
+
+    await service.create('company-1', 'user-1', {
+      employeeId: 'employee-1',
+      payrollPeriodId: 'period-1',
+      type: NoveltyType.BONUS,
+      amount: 100000,
+    });
+
+    expect(prismaMock.payrollConceptDetail.deleteMany).toHaveBeenCalledWith({
+      where: {
+        payrollItemId: {
+          in: ['item-1', 'item-2'],
+        },
+      },
+    });
+    expect(prismaMock.payrollItem.deleteMany).toHaveBeenCalledWith({
+      where: {
+        id: {
+          in: ['item-1', 'item-2'],
+        },
+        companyId: 'company-1',
+        payrollPeriodId: 'period-1',
+      },
+    });
+  });
+
+  it.each([
+    PayrollStatus.CALCULATING,
+    PayrollStatus.APPROVED,
+    PayrollStatus.CLOSED,
+    PayrollStatus.PAID,
+    PayrollStatus.CANCELLED,
+  ])('should reject novelty creation when period is %s', async (status) => {
+    prismaMock.payrollPeriod.findFirst.mockResolvedValue({
+      id: 'period-1',
+      companyId: 'company-1',
+      status,
+      version: 3,
+    });
+
+    await expect(
+      service.create('company-1', 'user-1', {
+        employeeId: 'employee-1',
+        payrollPeriodId: 'period-1',
+        type: NoveltyType.BONUS,
+        amount: 100000,
+      }),
+    ).rejects.toBeInstanceOf(BadRequestException);
+
+    expect(prismaMock.payrollPeriod.updateMany).not.toHaveBeenCalled();
+    expect(prismaMock.payrollNovelty.create).not.toHaveBeenCalled();
+  });
+
+  it('should return conflict if period changes concurrently', async () => {
+    prismaMock.payrollPeriod.updateMany.mockResolvedValue({ count: 0 });
+
+    const promise = service.create('company-1', 'user-1', {
+      employeeId: 'employee-1',
+      payrollPeriodId: 'period-1',
+      type: NoveltyType.BONUS,
+      amount: 100000,
+    });
+
+    await expect(promise).rejects.toBeInstanceOf(ConflictException);
+    await expect(promise).rejects.toMatchObject({
+      status: 409,
+    });
+
+    expect(prismaMock.payrollNovelty.create).not.toHaveBeenCalled();
+  });
+
+  it('should delete a novelty atomically and invalidate its period', async () => {
+    const novelty = {
+      id: 'novelty-delete',
+      companyId: 'company-1',
+      employeeId: 'employee-1',
+      payrollPeriodId: 'period-1',
+      type: NoveltyType.BONUS,
+      amount: 100000,
+      createdAt: new Date(),
+      employee: {
+        id: 'employee-1',
+      },
+    };
+    const deletedNovelty = {
+      id: 'novelty-delete',
+      companyId: 'company-1',
+      employeeId: 'employee-1',
+      payrollPeriodId: 'period-1',
+      type: NoveltyType.BONUS,
+    };
+
+    prismaMock.payrollNovelty.findFirst.mockResolvedValue(novelty);
+    prismaMock.payrollNovelty.delete.mockResolvedValue(deletedNovelty);
+    prismaMock.payrollPeriod.findFirst.mockResolvedValue({
+      id: 'period-1',
+      companyId: 'company-1',
+      status: PayrollStatus.CALCULATED,
+      version: 8,
+    });
+    prismaMock.payrollItem.findMany.mockResolvedValue([{ id: 'item-1' }]);
+
+    const result = await service.remove(
+      'company-1',
+      'novelty-delete',
+      'user-1',
+    );
+
+    expect(prismaMock.payrollConceptDetail.deleteMany).toHaveBeenCalled();
+    expect(prismaMock.payrollItem.deleteMany).toHaveBeenCalled();
+    expect(prismaMock.payrollNovelty.delete).toHaveBeenCalledWith({
+      where: {
+        id: 'novelty-delete',
+      },
+    });
+    expect(auditServiceMock.log).toHaveBeenCalledWith(
+      {
+        companyId: 'company-1',
+        userId: 'user-1',
+        action: 'DELETE_PAYROLL_NOVELTY',
+        entity: 'PayrollNovelty',
+        entityId: 'novelty-delete',
+        oldValue: novelty,
+      },
+      prismaMock,
+    );
+    expect(result).toEqual(deletedNovelty);
+  });
+
+  it('should reject novelty deletion from a closed period', async () => {
+    prismaMock.payrollNovelty.findFirst.mockResolvedValue({
+      id: 'novelty-delete',
+      companyId: 'company-1',
+      employeeId: 'employee-1',
+      payrollPeriodId: 'period-1',
+      type: NoveltyType.BONUS,
+      employee: {
+        id: 'employee-1',
+      },
+    });
+    prismaMock.payrollPeriod.findFirst.mockResolvedValue({
+      id: 'period-1',
+      companyId: 'company-1',
+      status: PayrollStatus.CLOSED,
+      version: 2,
+    });
+
+    await expect(
+      service.remove('company-1', 'novelty-delete', 'user-1'),
+    ).rejects.toBeInstanceOf(BadRequestException);
+
+    expect(prismaMock.payrollPeriod.updateMany).not.toHaveBeenCalled();
+    expect(prismaMock.payrollNovelty.delete).not.toHaveBeenCalled();
   });
 });
