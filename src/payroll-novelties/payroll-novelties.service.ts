@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ConflictException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -7,6 +8,13 @@ import { NoveltyType, PayrollStatus, Prisma } from '@prisma/client';
 import { AuditService } from '../audit/audit.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreatePayrollNoveltyDto } from './dto/create-payroll-novelty.dto';
+
+const NOVELTY_MUTABLE_PERIOD_STATUSES: PayrollStatus[] = [
+  PayrollStatus.DRAFT,
+  PayrollStatus.COLLECTING_NOVELTIES,
+  PayrollStatus.CALCULATED,
+  PayrollStatus.REOPENED,
+];
 
 @Injectable()
 export class PayrollNoveltiesService {
@@ -85,58 +93,47 @@ export class PayrollNoveltiesService {
       );
     }
 
-    const allowedStatuses: PayrollStatus[] = [
-      PayrollStatus.DRAFT,
-      PayrollStatus.COLLECTING_NOVELTIES,
-      PayrollStatus.CALCULATED,
-      PayrollStatus.REOPENED,
-    ];
+    this.assertPeriodAllowsNoveltyMutation(payrollPeriod.status);
 
-    if (!allowedStatuses.includes(payrollPeriod.status)) {
-      throw new BadRequestException(
-        `No se pueden registrar novedades en un período con estado ${payrollPeriod.status}`,
-      );
-    }
-
-    const createdNovelty = await this.prisma.payrollNovelty.create({
-      data: {
+    return this.prisma.$transaction(async (tx) => {
+      await this.preparePeriodForNoveltyMutation(
+        tx,
         companyId,
-        employeeId: dto.employeeId,
-        payrollPeriodId: payrollPeriod.id,
-        type: dto.type,
-        dayType: dto.dayType,
-        sickLeaveOrigin: dto.sickLeaveOrigin,
-        sickLeaveStartDay: dto.sickLeaveStartDay,
-        sickLeaveIbc: dto.sickLeaveIbc,
-        leaveType: dto.leaveType,
-        quantity: dto.quantity,
-        amount: dto.amount,
-        description: dto.description,
-      },
-    });
-
-    await this.auditService.log({
-      companyId,
-      userId: currentUserId,
-      action: 'CREATE_PAYROLL_NOVELTY',
-      entity: 'PayrollNovelty',
-      entityId: createdNovelty.id,
-      newValue: createdNovelty,
-    });
-
-    return createdNovelty;
-
-    if (dto.type === NoveltyType.LEAVE && !dto.leaveType) {
-      throw new BadRequestException(
-        'El tipo de licencia es obligatorio para novedades de licencia',
+        currentUserId,
+        payrollPeriod,
       );
-    }
 
-    if (dto.type !== NoveltyType.LEAVE && dto.leaveType) {
-      throw new BadRequestException(
-        'El tipo de licencia solo aplica a novedades de licencia',
+      const createdNovelty = await tx.payrollNovelty.create({
+        data: {
+          companyId,
+          employeeId: dto.employeeId,
+          payrollPeriodId: payrollPeriod.id,
+          type: dto.type,
+          dayType: dto.dayType,
+          sickLeaveOrigin: dto.sickLeaveOrigin,
+          sickLeaveStartDay: dto.sickLeaveStartDay,
+          sickLeaveIbc: dto.sickLeaveIbc,
+          leaveType: dto.leaveType,
+          quantity: dto.quantity,
+          amount: dto.amount,
+          description: dto.description,
+        },
+      });
+
+      await this.auditService.log(
+        {
+          companyId,
+          userId: currentUserId,
+          action: 'CREATE_PAYROLL_NOVELTY',
+          entity: 'PayrollNovelty',
+          entityId: createdNovelty.id,
+          newValue: createdNovelty,
+        },
+        tx,
       );
-    }
+
+      return createdNovelty;
+    });
   }
 
   async findAll(
@@ -278,21 +275,139 @@ export class PayrollNoveltiesService {
   async remove(companyId: string, id: string, currentUserId: string) {
     const novelty = await this.findOne(companyId, id);
 
-    const deletedNovelty = await this.prisma.payrollNovelty.delete({
+    const payrollPeriod = await this.prisma.payrollPeriod.findFirst({
       where: {
-        id: novelty.id,
+        id: novelty.payrollPeriodId,
+        companyId,
       },
     });
 
-    await this.auditService.log({
-      companyId,
-      userId: currentUserId,
-      action: 'DELETE_PAYROLL_NOVELTY',
-      entity: 'PayrollNovelty',
-      entityId: deletedNovelty.id,
-      oldValue: novelty,
+    if (!payrollPeriod) {
+      throw new NotFoundException('Período de nómina no encontrado');
+    }
+
+    this.assertPeriodAllowsNoveltyMutation(payrollPeriod.status);
+
+    return this.prisma.$transaction(async (tx) => {
+      await this.preparePeriodForNoveltyMutation(
+        tx,
+        companyId,
+        currentUserId,
+        payrollPeriod,
+      );
+
+      const deletedNovelty = await tx.payrollNovelty.delete({
+        where: {
+          id: novelty.id,
+        },
+      });
+
+      await this.auditService.log(
+        {
+          companyId,
+          userId: currentUserId,
+          action: 'DELETE_PAYROLL_NOVELTY',
+          entity: 'PayrollNovelty',
+          entityId: deletedNovelty.id,
+          oldValue: novelty,
+        },
+        tx,
+      );
+
+      return deletedNovelty;
+    });
+  }
+
+  private assertPeriodAllowsNoveltyMutation(status: PayrollStatus) {
+    if (!NOVELTY_MUTABLE_PERIOD_STATUSES.includes(status)) {
+      throw new BadRequestException(
+        `No se pueden modificar novedades en un período con estado ${status}`,
+      );
+    }
+  }
+
+  private async preparePeriodForNoveltyMutation(
+    tx: Prisma.TransactionClient,
+    companyId: string,
+    currentUserId: string,
+    payrollPeriod: {
+      id: string;
+      status: PayrollStatus;
+      version: number;
+    },
+  ) {
+    const transition = await tx.payrollPeriod.updateMany({
+      where: {
+        id: payrollPeriod.id,
+        companyId,
+        version: payrollPeriod.version,
+        status: {
+          in: NOVELTY_MUTABLE_PERIOD_STATUSES,
+        },
+      },
+      data: {
+        status: PayrollStatus.COLLECTING_NOVELTIES,
+        version: {
+          increment: 1,
+        },
+      },
     });
 
-    return deletedNovelty;
+    if (transition.count !== 1) {
+      throw new ConflictException(
+        'El período de nómina cambió mientras se modificaban sus novedades. Vuelve a cargarlo e intenta nuevamente',
+      );
+    }
+
+    const payrollItems = await tx.payrollItem.findMany({
+      where: {
+        companyId,
+        payrollPeriodId: payrollPeriod.id,
+      },
+      select: {
+        id: true,
+      },
+    });
+
+    const payrollItemIds = payrollItems.map((item) => item.id);
+
+    if (payrollItemIds.length > 0) {
+      await tx.payrollConceptDetail.deleteMany({
+        where: {
+          payrollItemId: {
+            in: payrollItemIds,
+          },
+        },
+      });
+
+      await tx.payrollItem.deleteMany({
+        where: {
+          id: {
+            in: payrollItemIds,
+          },
+          companyId,
+          payrollPeriodId: payrollPeriod.id,
+        },
+      });
+    }
+
+    await this.auditService.log(
+      {
+        companyId,
+        userId: currentUserId,
+        action: 'PREPARE_PAYROLL_FOR_NOVELTY_CHANGE',
+        entity: 'PayrollPeriod',
+        entityId: payrollPeriod.id,
+        oldValue: {
+          status: payrollPeriod.status,
+          version: payrollPeriod.version,
+        },
+        newValue: {
+          status: PayrollStatus.COLLECTING_NOVELTIES,
+          version: payrollPeriod.version + 1,
+        },
+      },
+      tx,
+    );
   }
 }
