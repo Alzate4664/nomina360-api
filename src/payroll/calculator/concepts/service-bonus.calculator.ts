@@ -1,28 +1,28 @@
 import { Injectable } from '@nestjs/common';
 import { ConceptType } from '@prisma/client';
+import Decimal from 'decimal.js';
 import { PAYROLL_RATES } from '../config/payroll-rates.config';
-
-export interface PayrollConcept {
-  code: string;
-  name: string;
-  type: ConceptType;
-  amount: number;
-}
+import { PayrollConceptAmount } from '../../money/payroll-money.types';
 
 @Injectable()
 export class ServiceBonusCalculator {
-  calculate(baseSalary: number, accruedDays: number, transportAllowance = 0) {
+  calculate(
+    baseSalary: Decimal,
+    accruedDays: number,
+    transportAllowance: Decimal = new Decimal(0),
+  ) {
     if (accruedDays <= 0) {
       return {
-        earned: 0,
-        concepts: [] as PayrollConcept[],
+        earned: new Decimal(0),
+        concepts: [] as PayrollConceptAmount[],
       };
     }
 
-    const calculationBase = baseSalary + transportAllowance;
+    const calculationBase = baseSalary.plus(transportAllowance);
 
-    const amount =
-      (calculationBase * accruedDays) / PAYROLL_RATES.serviceBonus.daysPerYear;
+    const amount = calculationBase
+      .times(accruedDays)
+      .dividedBy(PAYROLL_RATES.serviceBonus.daysPerYear);
 
     return {
       earned: amount,
@@ -33,7 +33,7 @@ export class ServiceBonusCalculator {
           type: ConceptType.EARNING,
           amount,
         },
-      ] as PayrollConcept[],
+      ] as PayrollConceptAmount[],
     };
   }
 }

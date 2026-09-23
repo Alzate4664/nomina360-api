@@ -1,25 +1,20 @@
 import { Injectable } from '@nestjs/common';
 import { ConceptType } from '@prisma/client';
-
-interface PayrollConcept {
-  code: string;
-  name: string;
-  type: ConceptType;
-  amount: number;
-}
+import Decimal from 'decimal.js';
+import { PayrollConceptAmount } from '../../money/payroll-money.types';
 
 @Injectable()
 export class TerminationVacationCalculator {
-  calculate(baseSalary: number, pendingVacationDays: number) {
-    if (baseSalary <= 0 || pendingVacationDays <= 0) {
+  calculate(baseSalary: Decimal, pendingVacationDays: Decimal) {
+    if (baseSalary.lte(0) || pendingVacationDays.lte(0)) {
       return {
-        earned: 0,
-        concepts: [] as PayrollConcept[],
+        earned: new Decimal(0),
+        concepts: [] as PayrollConceptAmount[],
       };
     }
 
-    const dailySalary = baseSalary / 30;
-    const amount = dailySalary * pendingVacationDays;
+    const dailySalary = baseSalary.dividedBy(30);
+    const amount = dailySalary.times(pendingVacationDays);
 
     return {
       earned: amount,
@@ -30,7 +25,7 @@ export class TerminationVacationCalculator {
           type: ConceptType.EARNING,
           amount,
         },
-      ] as PayrollConcept[],
+      ] as PayrollConceptAmount[],
     };
   }
 }

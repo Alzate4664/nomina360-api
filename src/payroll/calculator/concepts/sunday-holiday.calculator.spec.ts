@@ -1,4 +1,5 @@
-import { ConceptType } from '@prisma/client';
+import { ConceptType, PayrollNovelty, Prisma } from '@prisma/client';
+import Decimal from 'decimal.js';
 import { SundayHolidayCalculator } from './sunday-holiday.calculator';
 
 describe('SundayHolidayCalculator', () => {
@@ -8,61 +9,54 @@ describe('SundayHolidayCalculator', () => {
     calculator = new SundayHolidayCalculator();
   });
 
-  it('should calculate sunday surcharge using the configured rate', () => {
-    const baseSalary = 2100000;
+  const createSurcharge = (
+    type: 'SUNDAY_SURCHARGE' | 'HOLIDAY_SURCHARGE',
+    hours: string,
+    description: string,
+  ): PayrollNovelty =>
+    ({
+      type,
+      quantity: new Prisma.Decimal(hours),
+      amount: null,
+      description,
+    }) as unknown as PayrollNovelty;
 
-    const result = calculator.calculate(baseSalary, [
-      {
-        id: 'novelty-1',
-        companyId: 'company-1',
-        employeeId: 'employee-1',
-        payrollPeriodId: 'period-1',
-        type: 'SUNDAY_SURCHARGE',
-        quantity: 2,
-        amount: null,
-        description: '2 horas dominicales',
-        createdAt: new Date(),
-      },
+  it('should calculate sunday surcharge using the configured rate', () => {
+    const result = calculator.calculate(new Decimal('2100000'), [
+      createSurcharge('SUNDAY_SURCHARGE', '2', '2 horas dominicales'),
     ]);
 
-    expect(result.earned).toBe(18000);
+    expect(Decimal.isDecimal(result.earned)).toBe(true);
+    expect(result.earned.toString()).toBe('18000');
 
     expect(result.concepts).toEqual([
       {
         code: 'SUNDAY_SURCHARGE',
         name: '2 horas dominicales',
         type: ConceptType.EARNING,
-        amount: 18000,
+        amount: new Decimal('18000'),
       },
     ]);
   });
 
   it('should calculate holiday surcharge using the configured rate', () => {
-    const baseSalary = 2100000;
-
-    const result = calculator.calculate(baseSalary, [
-      {
-        id: 'novelty-2',
-        companyId: 'company-1',
-        employeeId: 'employee-1',
-        payrollPeriodId: 'period-1',
-        type: 'HOLIDAY_SURCHARGE',
-        quantity: 2,
-        amount: null,
-        description: '2 horas festivas',
-        createdAt: new Date(),
-      },
+    const result = calculator.calculate(new Decimal('2100000'), [
+      createSurcharge('HOLIDAY_SURCHARGE', '2', '2 horas festivas'),
     ]);
 
-    expect(result.earned).toBe(18000);
+    expect(result.earned.toString()).toBe('18000');
+  });
 
-    expect(result.concepts).toEqual([
-      {
-        code: 'HOLIDAY_SURCHARGE',
-        name: '2 horas festivas',
-        type: ConceptType.EARNING,
-        amount: 18000,
-      },
+  it('should preserve fractional sunday hours exactly', () => {
+    const result = calculator.calculate(new Decimal('2100000'), [
+      createSurcharge(
+        'SUNDAY_SURCHARGE',
+        '1.5',
+        'Horas dominicales fraccionarias',
+      ),
     ]);
+
+    expect(result.earned.toString()).toBe('13500');
+    expect(Decimal.isDecimal(result.concepts[0].amount)).toBe(true);
   });
 });

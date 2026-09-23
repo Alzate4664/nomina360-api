@@ -1,19 +1,26 @@
-import { LeaveType, PayrollDayType, SickLeaveOrigin } from '@prisma/client';
+import {
+  LeaveType,
+  PayrollDayType,
+  PayrollNovelty,
+  Prisma,
+  SickLeaveOrigin,
+} from '@prisma/client';
+import Decimal from 'decimal.js';
 import { PAYROLL_RATES } from './calculator/config/payroll-rates.config';
 import { AbsenceCalculator } from './calculator/concepts/absence.calculator';
 import { BaseSalaryCalculator } from './calculator/concepts/base-salary.calculator';
 import { BonusCalculator } from './calculator/concepts/bonus.calculator';
 import { DeductionCalculator } from './calculator/concepts/deduction.calculator';
 import { HealthCalculator } from './calculator/concepts/health.calculator';
+import { LeaveCalculator } from './calculator/concepts/leave.calculator';
 import { NightSurchargeCalculator } from './calculator/concepts/night-surcharge.calculator';
 import { OvertimeCalculator } from './calculator/concepts/overtime.calculator';
 import { PensionCalculator } from './calculator/concepts/pension.calculator';
 import { SickLeaveCalculator } from './calculator/concepts/sick-leave.calculator';
 import { SundayHolidayCalculator } from './calculator/concepts/sunday-holiday.calculator';
 import { TransportAllowanceCalculator } from './calculator/concepts/transport-allowance.calculator';
-import { PayrollCalculatorService } from './payroll-calculator.service';
 import { VacationCalculator } from './calculator/concepts/vacation.calculator';
-import { LeaveCalculator } from './calculator/concepts/leave.calculator';
+import { PayrollCalculatorService } from './payroll-calculator.service';
 
 describe('PayrollCalculatorService', () => {
   let calculator: PayrollCalculatorService;
@@ -37,7 +44,7 @@ describe('PayrollCalculatorService', () => {
   });
 
   it('should include transport allowance in earned total but exclude it from health and pension base', () => {
-    const baseSalary = PAYROLL_RATES.minimumWage;
+    const baseSalary = new Decimal(PAYROLL_RATES.minimumWage);
 
     const result = calculator.calculate({
       baseSalary,
@@ -45,108 +52,104 @@ describe('PayrollCalculatorService', () => {
       novelties: [],
     });
 
-    const expectedTransportAllowance =
-      PAYROLL_RATES.transportAllowance.monthlyAmount;
-
-    const expectedHealth = baseSalary * 0.04;
-    const expectedPension = baseSalary * 0.04;
-
-    expect(result.earnedTotal).toBe(baseSalary + expectedTransportAllowance);
-
-    expect(result.deductionsTotal).toBe(expectedHealth + expectedPension);
-
-    expect(result.netPay).toBe(
-      baseSalary +
-        expectedTransportAllowance -
-        expectedHealth -
-        expectedPension,
+    const expectedTransportAllowance = new Decimal(
+      PAYROLL_RATES.transportAllowance.monthlyAmount,
     );
+
+    const expectedHealth = baseSalary.times('0.04');
+    const expectedPension = baseSalary.times('0.04');
+
+    const expectedEarnedTotal = baseSalary.plus(expectedTransportAllowance);
+    const expectedDeductions = expectedHealth.plus(expectedPension);
+    const expectedNetPay = expectedEarnedTotal.minus(expectedDeductions);
+
+    expect(Decimal.isDecimal(result.earnedTotal)).toBe(true);
+    expect(Decimal.isDecimal(result.deductionsTotal)).toBe(true);
+    expect(Decimal.isDecimal(result.netPay)).toBe(true);
+
+    expect(result.earnedTotal.eq(expectedEarnedTotal)).toBe(true);
+    expect(result.deductionsTotal.eq(expectedDeductions)).toBe(true);
+    expect(result.netPay.eq(expectedNetPay)).toBe(true);
   });
 
   it('should exclude sick leave days from ordinary salary and transport allowance', () => {
-    const baseSalary = 3000000;
+    const baseSalary = new Decimal('3000000');
+
+    const sickLeave = {
+      type: 'SICK_LEAVE',
+      dayType: PayrollDayType.REGULAR,
+      sickLeaveOrigin: SickLeaveOrigin.WORK_ACCIDENT,
+      sickLeaveStartDay: 1,
+      sickLeaveIbc: new Prisma.Decimal('3000000'),
+      quantity: new Prisma.Decimal('3'),
+      amount: null,
+      description: 'Incapacidad laboral de 3 días',
+    } as unknown as PayrollNovelty;
 
     const result = calculator.calculate({
       baseSalary,
       workedDays: 30,
-      novelties: [
-        {
-          id: 'novelty-1',
-          companyId: 'company-1',
-          employeeId: 'employee-1',
-          payrollPeriodId: 'period-1',
-          type: 'SICK_LEAVE',
-          dayType: PayrollDayType.REGULAR,
-          sickLeaveOrigin: SickLeaveOrigin.WORK_ACCIDENT,
-          sickLeaveStartDay: 1,
-          sickLeaveIbc: 3000000,
-          quantity: 3,
-          amount: null,
-          description: 'Incapacidad laboral de 3 días',
-          createdAt: new Date(),
-        },
-      ],
+      novelties: [sickLeave],
     });
 
-    const expectedOrdinarySalary = 2700000;
-    const expectedSickLeave = 300000;
+    const expectedOrdinarySalary = new Decimal('2700000');
+    const expectedSickLeave = new Decimal('300000');
 
-    const expectedTransportAllowance = Math.round(
-      (PAYROLL_RATES.transportAllowance.monthlyAmount / 30) * 27,
+    const expectedTransportAllowance = new Decimal(
+      PAYROLL_RATES.transportAllowance.monthlyAmount,
+    )
+      .dividedBy(30)
+      .times(27)
+      .toDecimalPlaces(0, Decimal.ROUND_HALF_UP);
+
+    const expectedContributionBase =
+      expectedOrdinarySalary.plus(expectedSickLeave);
+
+    const expectedHealth = expectedContributionBase.times('0.04');
+    const expectedPension = expectedContributionBase.times('0.04');
+
+    const expectedEarnedTotal = expectedContributionBase.plus(
+      expectedTransportAllowance,
     );
 
-    const expectedContributionBase = expectedOrdinarySalary + expectedSickLeave;
+    const expectedDeductions = expectedHealth.plus(expectedPension);
 
-    const expectedHealth = expectedContributionBase * 0.04;
-    const expectedPension = expectedContributionBase * 0.04;
+    expect(result.earnedTotal.eq(expectedEarnedTotal)).toBe(true);
+    expect(result.deductionsTotal.eq(expectedDeductions)).toBe(true);
 
-    const expectedEarnedTotal =
-      expectedContributionBase + expectedTransportAllowance;
+    expect(
+      result.netPay.eq(expectedEarnedTotal.minus(expectedDeductions)),
+    ).toBe(true);
 
-    const expectedDeductions = expectedHealth + expectedPension;
+    const baseSalaryConcept = result.concepts.find(
+      (concept) => concept.code === 'BASE_SALARY',
+    );
 
-    expect(result.earnedTotal).toBe(expectedEarnedTotal);
+    const sickLeaveConcept = result.concepts.find(
+      (concept) => concept.code === 'SICK_LEAVE',
+    );
 
-    expect(result.deductionsTotal).toBe(expectedDeductions);
+    const transportConcept = result.concepts.find(
+      (concept) => concept.code === 'TRANSPORT_ALLOWANCE',
+    );
 
-    expect(result.netPay).toBe(expectedEarnedTotal - expectedDeductions);
+    expect(baseSalaryConcept?.amount.toString()).toBe('2700000');
+    expect(sickLeaveConcept?.amount.toString()).toBe('300000');
 
-    expect(result.concepts).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          code: 'BASE_SALARY',
-          amount: expectedOrdinarySalary,
-        }),
-        expect.objectContaining({
-          code: 'SICK_LEAVE',
-          amount: expectedSickLeave,
-        }),
-        expect.objectContaining({
-          code: 'TRANSPORT_ALLOWANCE',
-          amount: expectedTransportAllowance,
-        }),
-      ]),
+    expect(transportConcept?.amount.toString()).toBe(
+      expectedTransportAllowance.toString(),
     );
   });
 
   it('should exclude vacation days from ordinary salary and transport allowance', () => {
-    const baseSalary = PAYROLL_RATES.minimumWage;
+    const baseSalary = new Decimal(PAYROLL_RATES.minimumWage);
 
     const vacationNovelty = {
-      id: 'vacation-1',
-      companyId: 'company-1',
-      employeeId: 'employee-1',
-      payrollPeriodId: 'period-1',
-      type: 'VACATION' as const,
-      dayType: null,
-      sickLeaveOrigin: null,
-      sickLeaveStartDay: null,
-      sickLeaveIbc: null,
-      quantity: 5,
+      type: 'VACATION',
+      quantity: new Prisma.Decimal('5'),
       amount: null,
       description: 'Vacaciones',
-      createdAt: new Date(),
-    };
+    } as unknown as PayrollNovelty;
 
     const result = calculator.calculate({
       baseSalary,
@@ -154,10 +157,10 @@ describe('PayrollCalculatorService', () => {
       novelties: [vacationNovelty],
     });
 
-    const dailySalary = baseSalary / 30;
+    const dailySalary = baseSalary.dividedBy(30);
 
-    const expectedOrdinarySalary = dailySalary * 25;
-    const expectedVacationPay = dailySalary * 5;
+    const expectedOrdinarySalary = dailySalary.times(25);
+    const expectedVacationPay = dailySalary.times(5);
 
     const baseSalaryConcept = result.concepts.find(
       (concept) => concept.code === 'BASE_SALARY',
@@ -171,42 +174,39 @@ describe('PayrollCalculatorService', () => {
       (concept) => concept.code === 'TRANSPORT_ALLOWANCE',
     );
 
-    expect(baseSalaryConcept?.amount).toBeCloseTo(expectedOrdinarySalary);
-    expect(vacationConcept?.amount).toBeCloseTo(expectedVacationPay);
+    expect(baseSalaryConcept?.amount.eq(expectedOrdinarySalary)).toBe(true);
+    expect(vacationConcept?.amount.eq(expectedVacationPay)).toBe(true);
 
     expect(
-      (baseSalaryConcept?.amount ?? 0) + (vacationConcept?.amount ?? 0),
-    ).toBeCloseTo(baseSalary);
+      baseSalaryConcept?.amount.plus(vacationConcept!.amount).eq(baseSalary),
+    ).toBe(true);
 
-    expect(transportConcept?.amount).toBe(
-      Math.round((PAYROLL_RATES.transportAllowance.monthlyAmount / 30) * 25),
+    const expectedTransportAllowance = new Decimal(
+      PAYROLL_RATES.transportAllowance.monthlyAmount,
+    )
+      .dividedBy(30)
+      .times(25)
+      .toDecimalPlaces(0, Decimal.ROUND_HALF_UP);
+
+    expect(transportConcept?.amount.toString()).toBe(
+      expectedTransportAllowance.toString(),
     );
   });
 
   it('should exclude paid leave days from ordinary salary and pay them as leave', () => {
-    const baseSalary = 3000000;
+    const paidLeave = {
+      type: 'LEAVE',
+      dayType: PayrollDayType.REGULAR,
+      leaveType: LeaveType.PAID,
+      quantity: new Prisma.Decimal('3'),
+      amount: null,
+      description: 'Licencia remunerada',
+    } as unknown as PayrollNovelty;
 
     const result = calculator.calculate({
-      baseSalary,
+      baseSalary: new Decimal('3000000'),
       workedDays: 30,
-      novelties: [
-        {
-          id: 'leave-paid-1',
-          companyId: 'company-1',
-          employeeId: 'employee-1',
-          payrollPeriodId: 'period-1',
-          type: 'LEAVE',
-          dayType: PayrollDayType.REGULAR,
-          sickLeaveOrigin: null,
-          sickLeaveStartDay: null,
-          sickLeaveIbc: null,
-          leaveType: LeaveType.PAID,
-          quantity: 3,
-          amount: null,
-          description: 'Licencia remunerada',
-          createdAt: new Date(),
-        },
-      ],
+      novelties: [paidLeave],
     });
 
     const baseSalaryConcept = result.concepts.find(
@@ -217,38 +217,28 @@ describe('PayrollCalculatorService', () => {
       (concept) => concept.code === 'LEAVE',
     );
 
-    expect(baseSalaryConcept?.amount).toBe(2700000);
-    expect(leaveConcept?.amount).toBe(300000);
+    expect(baseSalaryConcept?.amount.toString()).toBe('2700000');
+    expect(leaveConcept?.amount.toString()).toBe('300000');
 
-    expect((baseSalaryConcept?.amount ?? 0) + (leaveConcept?.amount ?? 0)).toBe(
-      3000000,
-    );
+    expect(
+      baseSalaryConcept?.amount.plus(leaveConcept!.amount).toString(),
+    ).toBe('3000000');
   });
 
   it('should exclude unpaid leave days from ordinary salary without generating leave earnings', () => {
-    const baseSalary = 3000000;
+    const unpaidLeave = {
+      type: 'LEAVE',
+      dayType: PayrollDayType.REGULAR,
+      leaveType: LeaveType.UNPAID,
+      quantity: new Prisma.Decimal('3'),
+      amount: null,
+      description: 'Licencia no remunerada',
+    } as unknown as PayrollNovelty;
 
     const result = calculator.calculate({
-      baseSalary,
+      baseSalary: new Decimal('3000000'),
       workedDays: 30,
-      novelties: [
-        {
-          id: 'leave-unpaid-1',
-          companyId: 'company-1',
-          employeeId: 'employee-1',
-          payrollPeriodId: 'period-1',
-          type: 'LEAVE',
-          dayType: PayrollDayType.REGULAR,
-          sickLeaveOrigin: null,
-          sickLeaveStartDay: null,
-          sickLeaveIbc: null,
-          leaveType: LeaveType.UNPAID,
-          quantity: 3,
-          amount: null,
-          description: 'Licencia no remunerada',
-          createdAt: new Date(),
-        },
-      ],
+      novelties: [unpaidLeave],
     });
 
     const baseSalaryConcept = result.concepts.find(
@@ -259,19 +249,52 @@ describe('PayrollCalculatorService', () => {
       (concept) => concept.code === 'LEAVE',
     );
 
-    expect(baseSalaryConcept?.amount).toBe(2700000);
+    expect(baseSalaryConcept?.amount.toString()).toBe('2700000');
     expect(leaveConcept).toBeUndefined();
 
     const transportConcept = result.concepts.find(
       (concept) => concept.code === 'TRANSPORT_ALLOWANCE',
     );
 
-    const expectedTransportAllowance = Math.round(
-      (PAYROLL_RATES.transportAllowance.monthlyAmount / 30) * 27,
+    const expectedTransportAllowance = new Decimal(
+      PAYROLL_RATES.transportAllowance.monthlyAmount,
+    )
+      .dividedBy(30)
+      .times(27)
+      .toDecimalPlaces(0, Decimal.ROUND_HALF_UP);
+
+    expect(transportConcept?.amount.toString()).toBe(
+      expectedTransportAllowance.toString(),
     );
 
-    expect(transportConcept?.amount).toBe(expectedTransportAllowance);
+    expect(result.earnedTotal.toString()).toBe(
+      new Decimal('2700000').plus(expectedTransportAllowance).toString(),
+    );
+  });
 
-    expect(result.earnedTotal).toBe(2700000 + expectedTransportAllowance);
+  it('should preserve fractional novelty quantities through orchestration', () => {
+    const vacation = {
+      type: 'VACATION',
+      quantity: new Prisma.Decimal('1.5'),
+      amount: null,
+      description: 'Vacaciones parciales',
+    } as unknown as PayrollNovelty;
+
+    const result = calculator.calculate({
+      baseSalary: new Decimal('3000000'),
+      workedDays: 30,
+      novelties: [vacation],
+    });
+
+    const baseSalaryConcept = result.concepts.find(
+      (concept) => concept.code === 'BASE_SALARY',
+    );
+
+    const vacationConcept = result.concepts.find(
+      (concept) => concept.code === 'VACATION',
+    );
+
+    expect(baseSalaryConcept?.amount.toString()).toBe('2850000');
+    expect(vacationConcept?.amount.toString()).toBe('150000');
   });
 });

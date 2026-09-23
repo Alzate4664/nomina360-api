@@ -2,10 +2,16 @@ import { BadRequestException, Injectable } from '@nestjs/common';
 import { AuditService } from '../../audit/audit.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { PayrollCalculatorService } from '../payroll-calculator.service';
-import { ConceptType, PayrollStatus, PayrollType } from '@prisma/client';
+import { PayrollStatus, PayrollType } from '@prisma/client';
 import { AccruedDaysCalculator } from '../calculator/accrued-days.calculator';
 import { SeverancePayrollCalculator } from '../calculator/severance-payroll.calculator';
 import { ServiceBonusPayrollCalculator } from '../calculator/service-bonus-payroll.calculator';
+import Decimal from 'decimal.js';
+import { toDecimal } from '../money/decimal';
+import {
+  PayrollCalculationResult,
+  PayrollConceptAmount,
+} from '../money/payroll-money.types';
 
 // In-memory result collected per eligible employee before the transaction opens.
 // Concept fields use the calculator output shape { code, name, type, amount }.
@@ -14,16 +20,11 @@ interface CalculatedEmployeeResult {
   employeeId: string;
   companyId: string;
   payrollPeriodId: string;
-  baseSalary: number;
-  earnedTotal: number;
-  deductionsTotal: number;
-  netPay: number;
-  concepts: Array<{
-    code: string;
-    name: string;
-    type: ConceptType;
-    amount: number;
-  }>;
+  baseSalary: Decimal;
+  earnedTotal: Decimal;
+  deductionsTotal: Decimal;
+  netPay: Decimal;
+  concepts: PayrollConceptAmount[];
 }
 
 @Injectable()
@@ -126,19 +127,9 @@ export class CalculatePayrollUseCase {
         },
       });
 
-      let calculation:
-        | {
-            earnedTotal: number;
-            deductionsTotal: number;
-            netPay: number;
-            concepts: Array<{
-              code: string;
-              name: string;
-              type: ConceptType;
-              amount: number;
-            }>;
-          }
-        | undefined;
+      const baseSalary = toDecimal(employee.baseSalary);
+
+      let calculation: PayrollCalculationResult;
 
       if (payrollType === PayrollType.SEVERANCE) {
         const accruedDays = this.accruedDaysCalculator.calculate(
@@ -152,7 +143,7 @@ export class CalculatePayrollUseCase {
         }
 
         calculation = this.severancePayrollCalculator.calculate({
-          baseSalary: Number(employee.baseSalary),
+          baseSalary,
           accruedDays,
         });
       } else if (payrollType === PayrollType.BONUS) {
@@ -170,12 +161,12 @@ export class CalculatePayrollUseCase {
         }
 
         calculation = this.serviceBonusPayrollCalculator.calculate({
-          baseSalary: Number(employee.baseSalary),
+          baseSalary,
           accruedDays,
         });
       } else {
         calculation = this.calculator.calculate({
-          baseSalary: Number(employee.baseSalary),
+          baseSalary,
           workedDays: 30,
           novelties,
         });
@@ -185,7 +176,7 @@ export class CalculatePayrollUseCase {
         employeeId: employee.id,
         companyId,
         payrollPeriodId: period.id,
-        baseSalary: Number(employee.baseSalary),
+        baseSalary,
         earnedTotal: calculation.earnedTotal,
         deductionsTotal: calculation.deductionsTotal,
         netPay: calculation.netPay,
@@ -205,9 +196,9 @@ export class CalculatePayrollUseCase {
       // a) Claim the period using optimistic concurrency control.
       const transition = await tx.payrollPeriod.updateMany({
         where: {
-          id: period!.id,
+          id: period.id,
           companyId,
-          version: period!.version,
+          version: period.version,
           status: {
             in: allowedStatuses,
           },
@@ -251,10 +242,10 @@ export class CalculatePayrollUseCase {
             companyId: result.companyId,
             payrollPeriodId: result.payrollPeriodId,
             employeeId: result.employeeId,
-            baseSalary: result.baseSalary,
-            earnedTotal: result.earnedTotal,
-            deductionsTotal: result.deductionsTotal,
-            netPay: result.netPay,
+            baseSalary: result.baseSalary.toString(),
+            earnedTotal: result.earnedTotal.toString(),
+            deductionsTotal: result.deductionsTotal.toString(),
+            netPay: result.netPay.toString(),
           },
         });
 
@@ -265,7 +256,7 @@ export class CalculatePayrollUseCase {
               conceptCode: concept.code, // map: calculator code → DB conceptCode
               conceptName: concept.name, // map: calculator name → DB conceptName
               type: concept.type,
-              amount: concept.amount,
+              amount: concept.amount.toString(),
             },
           });
         }
@@ -279,18 +270,18 @@ export class CalculatePayrollUseCase {
           userId: currentUserId,
           action: 'CALCULATE_PAYROLL',
           entity: 'PayrollPeriod',
-          entityId: period!.id,
+          entityId: period.id,
           newValue: {
             year,
             month,
             status: PayrollStatus.CALCULATED,
-            version: period!.version + 1,
+            version: period.version + 1,
           },
         },
         tx,
       );
     });
 
-    return period!.id;
+    return period.id;
   }
 }
