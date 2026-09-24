@@ -1,14 +1,17 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { PayrollType } from '@prisma/client';
 import {
   IsDateString,
   IsEnum,
   IsInt,
   IsOptional,
   IsString,
+  Matches,
   Max,
   Min,
 } from 'class-validator';
-import { PayrollType } from '@prisma/client';
+
+const DATE_ONLY_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 
 export class CreatePayrollPeriodDto {
   @ApiPropertyOptional({
@@ -28,7 +31,8 @@ export class CreatePayrollPeriodDto {
   payrollType!: PayrollType;
 
   @ApiProperty({
-    description: 'Año del período de nómina.',
+    description:
+      'Año de clasificación del período. Debe coincidir con startDate cuando exista.',
     example: 2026,
     minimum: 2000,
     maximum: 2100,
@@ -39,7 +43,8 @@ export class CreatePayrollPeriodDto {
   year!: number;
 
   @ApiProperty({
-    description: 'Mes del período de nómina.',
+    description:
+      'Mes de clasificación del período. Debe coincidir con startDate cuando exista.',
     example: 8,
     minimum: 1,
     maximum: 12,
@@ -50,29 +55,40 @@ export class CreatePayrollPeriodDto {
   month!: number;
 
   @ApiPropertyOptional({
-    description: 'Fecha de inicio del período.',
+    description:
+      'Fecha de inicio del período. Obligatoria para nóminas periódicas.',
     example: '2026-08-01',
     format: 'date',
   })
   @IsOptional()
   @IsDateString()
+  @Matches(DATE_ONLY_PATTERN, {
+    message: 'startDate debe tener formato YYYY-MM-DD.',
+  })
   startDate?: string;
 
   @ApiPropertyOptional({
-    description: 'Fecha de finalización del período.',
+    description:
+      'Fecha de finalización del período. Obligatoria para nóminas periódicas.',
     example: '2026-08-31',
     format: 'date',
   })
   @IsOptional()
   @IsDateString()
+  @Matches(DATE_ONLY_PATTERN, {
+    message: 'endDate debe tener formato YYYY-MM-DD.',
+  })
   endDate?: string;
 
   @ApiPropertyOptional({
     description: 'Fecha programada de pago.',
-    example: '2026-08-30',
+    example: '2026-08-31',
     format: 'date',
   })
   @IsOptional()
   @IsDateString()
+  @Matches(DATE_ONLY_PATTERN, {
+    message: 'paymentDate debe tener formato YYYY-MM-DD.',
+  })
   paymentDate?: string;
 }

@@ -17,9 +17,11 @@ describe('Nomina360 API (e2e)', () => {
   let createdNoveltyId: string | undefined;
   let terminationEmployeeId: string | undefined;
   let employmentTerminationId: string | undefined;
+
   let rollbackFirstPeriodId: string | undefined;
   let rollbackRecalculationPeriodId: string | undefined;
   let lifecyclePayrollPeriodId: string | undefined;
+  let temporalPayrollPeriodId: string | undefined;
 
   const uniqueSuffix = `${Date.now()}-${Math.floor(Math.random() * 10000)}`;
 
@@ -219,6 +221,14 @@ if (rollbackPeriodIds.length > 0) {
         });
       }
 
+      if (temporalPayrollPeriodId) {
+        await prisma.payrollPeriod.deleteMany({
+          where: {
+            id: temporalPayrollPeriodId,
+          },
+        });
+      }
+
       if (createdEmployeeId) {
         await prisma.employee.deleteMany({
           where: {
@@ -239,6 +249,7 @@ if (rollbackPeriodIds.length > 0) {
         createdUserId,
         createdEmployeeId,
         createdPayrollPeriodId,
+        temporalPayrollPeriodId,
         createdNoveltyId,
         terminationEmployeeId,
         employmentTerminationId,
@@ -543,6 +554,45 @@ if (rollbackPeriodIds.length > 0) {
     expect(response.body.payrollType).toBe('EXTRAORDINARY');
 
     createdPayrollPeriodId = response.body.id;
+  });
+
+    it('POST /payroll/periods debe rechazar una nómina MONTHLY sin intervalo explícito', async () => {
+    await request(app.getHttpServer())
+      .post('/payroll/periods')
+      .set('Authorization', `Bearer ${ownerToken}`)
+      .send({
+        name: `Período mensual inválido E2E ${uniqueSuffix}`,
+        payrollType: 'MONTHLY',
+        year: 2099,
+        month: 8,
+      })
+      .expect(400);
+  });
+
+  it('POST /payroll/periods debe crear una nómina MONTHLY con intervalo explícito', async () => {
+    const response = await request(app.getHttpServer())
+      .post('/payroll/periods')
+      .set('Authorization', `Bearer ${ownerToken}`)
+      .send({
+        name: `Período mensual temporal E2E ${uniqueSuffix}`,
+        payrollType: 'MONTHLY',
+        year: 2099,
+        month: 8,
+        startDate: '2099-08-01',
+        endDate: '2099-08-31',
+        paymentDate: '2099-09-01',
+      })
+      .expect(201);
+
+    expect(response.body).toHaveProperty('id');
+    expect(response.body.payrollType).toBe('MONTHLY');
+    expect(response.body.year).toBe(2099);
+    expect(response.body.month).toBe(8);
+    expect(response.body.startDate).toBe('2099-08-01T00:00:00.000Z');
+    expect(response.body.endDate).toBe('2099-08-31T00:00:00.000Z');
+    expect(response.body.paymentDate).toBe('2099-09-01T00:00:00.000Z');
+
+    temporalPayrollPeriodId = response.body.id;
   });
 
   it('POST /payroll-novelties debe crear una novedad', async () => {
