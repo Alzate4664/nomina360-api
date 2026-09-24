@@ -34,8 +34,32 @@ import { PayrollService } from './payroll.service';
 export class PayrollController {
   constructor(private readonly payrollService: PayrollService) {}
 
+  @Post('periods/:id/calculate')
+  @ApiOperation({
+    summary: 'Calcular un período de nómina por su identificador',
+  })
+  @ApiResponse({
+    status: 201,
+    description: 'Nómina calculada correctamente.',
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'El período no se encuentra en un estado calculable.',
+  })
+  @ApiResponse({
+    status: 404,
+    description: 'Período de nómina no encontrado.',
+  })
+  @Roles('OWNER', 'ADMIN', 'ACCOUNTANT')
+  calculate(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+    return this.payrollService.calculatePayroll(user.companyId, user.sub, id);
+  }
+
   @Post('calculate')
-  @ApiOperation({ summary: 'Calcular un período de nómina' })
+  @ApiOperation({
+    summary: 'Calcular un período de nómina usando año, mes y tipo',
+    deprecated: true,
+  })
   @ApiResponse({
     status: 201,
     description: 'Nómina calculada correctamente.',
@@ -53,12 +77,17 @@ export class PayrollController {
     status: 403,
     description: 'El usuario no tiene permisos para calcular la nómina.',
   })
+  @Post('calculate')
+  @ApiOperation({
+    summary: 'Calcular un período de nómina usando año, mes y tipo',
+    deprecated: true,
+  })
   @Roles('OWNER', 'ADMIN', 'ACCOUNTANT')
-  calculate(
+  calculateLegacy(
     @CurrentUser() user: AuthenticatedUser,
     @Body() dto: CalculatePayrollDto,
   ) {
-    return this.payrollService.calculatePayroll(
+    return this.payrollService.calculatePayrollLegacy(
       user.companyId,
       user.sub,
       dto.year,

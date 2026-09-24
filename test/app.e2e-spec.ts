@@ -600,7 +600,7 @@ if (rollbackPeriodIds.length > 0) {
     expect(auditRecord.action).toBe('CREATE_PAYROLL_NOVELTY');
   });
 
-  it('POST /payroll/calculate debe persistir aritmética Decimal exacta sin ruido IEEE-754', async () => {
+  it('POST /payroll/calculate legacy debe persistir aritmética Decimal exacta sin ruido IEEE-754', async () => {
   let precisionPeriodId: string | undefined;
   let precisionNoveltyId: string | undefined;
 
@@ -766,15 +766,19 @@ if (rollbackPeriodIds.length > 0) {
   }
 });
 
-  it('POST /payroll/calculate debe hacer rollback real si falla el audit en un primer cálculo', async () => {
-  const employee = await prisma.employee.findUniqueOrThrow({
-    where: {
-      id: createdEmployeeId,
-    },
-    select: {
-      companyId: true,
-    },
-  });
+  it('POST /payroll/periods/:id/calculate debe hacer rollback real si falla el audit en un primer cálculo', async () => {
+  const periodResponse = await request(app.getHttpServer())
+    .post('/payroll/periods')
+    .set('Authorization', `Bearer ${ownerToken}`)
+    .send({
+      name: `Rollback first calculation ${uniqueSuffix}`,
+      year: rollbackPayrollYear,
+      month: rollbackFirstMonth,
+      payrollType: rollbackPayrollType,
+    })
+    .expect(201);
+
+  rollbackFirstPeriodId = periodResponse.body.id as string;
 
   const auditSpy = jest
     .spyOn(auditService, 'log')
@@ -782,28 +786,18 @@ if (rollbackPeriodIds.length > 0) {
 
   try {
     await request(app.getHttpServer())
-      .post('/payroll/calculate')
+      .post(`/payroll/periods/${rollbackFirstPeriodId}/calculate`)
       .set('Authorization', `Bearer ${ownerToken}`)
-      .send({
-        year: rollbackPayrollYear,
-        month: rollbackFirstMonth,
-        payrollType: rollbackPayrollType,
-      })
       .expect(500);
   } finally {
     auditSpy.mockRestore();
   }
 
-  const period = await prisma.payrollPeriod.findFirstOrThrow({
+  const period = await prisma.payrollPeriod.findUniqueOrThrow({
     where: {
-      companyId: employee.companyId,
-      year: rollbackPayrollYear,
-      month: rollbackFirstMonth,
-      payrollType: rollbackPayrollType,
+      id: rollbackFirstPeriodId,
     },
   });
-
-  rollbackFirstPeriodId = period.id;
 
   expect(period.status).toBe('DRAFT');
 
@@ -839,36 +833,30 @@ if (rollbackPeriodIds.length > 0) {
   expect(auditCount).toBe(0);
 });
 
-it('POST /payroll/calculate debe restaurar la liquidación anterior si falla una recalculación', async () => {
-  const employee = await prisma.employee.findUniqueOrThrow({
-    where: {
-      id: createdEmployeeId,
-    },
-    select: {
-      companyId: true,
-    },
-  });
-
-  await request(app.getHttpServer())
-    .post('/payroll/calculate')
+it('POST /payroll/periods/:id/calculate debe restaurar la liquidación anterior si falla una recalculación', async () => {
+  const periodResponse = await request(app.getHttpServer())
+    .post('/payroll/periods')
     .set('Authorization', `Bearer ${ownerToken}`)
     .send({
+      name: `Rollback recalculation ${uniqueSuffix}`,
       year: rollbackPayrollYear,
       month: rollbackRecalculationMonth,
       payrollType: rollbackPayrollType,
     })
     .expect(201);
 
-  const period = await prisma.payrollPeriod.findFirstOrThrow({
+  rollbackRecalculationPeriodId = periodResponse.body.id as string;
+
+  await request(app.getHttpServer())
+    .post(`/payroll/periods/${rollbackRecalculationPeriodId}/calculate`)
+    .set('Authorization', `Bearer ${ownerToken}`)
+    .expect(201);
+
+  const period = await prisma.payrollPeriod.findUniqueOrThrow({
     where: {
-      companyId: employee.companyId,
-      year: rollbackPayrollYear,
-      month: rollbackRecalculationMonth,
-      payrollType: rollbackPayrollType,
+      id: rollbackRecalculationPeriodId,
     },
   });
-
-  rollbackRecalculationPeriodId = period.id;
 
   const before = await getPayrollSnapshot(period.id);
 
@@ -891,13 +879,8 @@ it('POST /payroll/calculate debe restaurar la liquidación anterior si falla una
 
   try {
     await request(app.getHttpServer())
-      .post('/payroll/calculate')
+      .post(`/payroll/periods/${rollbackRecalculationPeriodId}/calculate`)
       .set('Authorization', `Bearer ${ownerToken}`)
-      .send({
-        year: rollbackPayrollYear,
-        month: rollbackRecalculationMonth,
-        payrollType: rollbackPayrollType,
-      })
       .expect(500);
   } finally {
     auditSpy.mockRestore();
@@ -942,13 +925,8 @@ it('POST /payroll/calculate debe restaurar la liquidación anterior si falla una
     expect(draftPeriod.version).toBe(0);
 
     await request(app.getHttpServer())
-      .post('/payroll/calculate')
+      .post(`/payroll/periods/${lifecyclePayrollPeriodId}/calculate`)
       .set('Authorization', `Bearer ${ownerToken}`)
-      .send({
-        year: lifecyclePayrollYear,
-        month: lifecyclePayrollMonth,
-        payrollType: lifecyclePayrollType,
-      })
       .expect(201);
 
     const calculatedPeriod = await prisma.payrollPeriod.findUniqueOrThrow({

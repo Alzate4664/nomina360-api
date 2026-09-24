@@ -28,11 +28,26 @@ export class PayrollService {
   async calculatePayroll(
     companyId: string,
     currentUserId: string,
+    payrollPeriodId: string,
+  ) {
+    const calculatedPayrollPeriodId =
+      await this.calculatePayrollUseCase.execute(
+        companyId,
+        currentUserId,
+        payrollPeriodId,
+      );
+
+    return this.findOne(companyId, calculatedPayrollPeriodId);
+  }
+
+  async calculatePayrollLegacy(
+    companyId: string,
+    currentUserId: string,
     year: number,
     month: number,
     payrollType: PayrollType,
   ) {
-    const payrollPeriodId = await this.calculatePayrollUseCase.execute(
+    const payrollPeriodId = await this.calculatePayrollUseCase.executeLegacy(
       companyId,
       currentUserId,
       year,
