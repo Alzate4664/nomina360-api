@@ -148,7 +148,7 @@ model PayrollPeriod {
   items     PayrollItem[]
   novelties PayrollNovelty[]
 
-  @@unique([companyId, year, month, payrollType])
+  @@index([companyId, year, month, payrollType])
   @@index([companyId, status])
   @@index([companyId, startDate, endDate])
   @@index([createdAt])
