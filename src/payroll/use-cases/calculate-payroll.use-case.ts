@@ -288,10 +288,10 @@ export class CalculatePayrollUseCase {
         });
       }
 
-      // c) Insert new items and concepts.
-      for (const result of results) {
-        const payrollItem = await tx.payrollItem.create({
-          data: {
+      // c) Insert new items and concepts in batches.
+      if (results.length > 0) {
+        const createdPayrollItems = await tx.payrollItem.createManyAndReturn({
+          data: results.map((result) => ({
             companyId: result.companyId,
             payrollPeriodId: result.payrollPeriodId,
             employeeId: result.employeeId,
@@ -299,18 +299,40 @@ export class CalculatePayrollUseCase {
             earnedTotal: result.earnedTotal.toString(),
             deductionsTotal: result.deductionsTotal.toString(),
             netPay: result.netPay.toString(),
+          })),
+          select: {
+            id: true,
+            employeeId: true,
           },
         });
 
-        for (const concept of result.concepts) {
-          await tx.payrollConceptDetail.create({
-            data: {
-              payrollItemId: payrollItem.id,
-              conceptCode: concept.code, // map: calculator code → DB conceptCode
-              conceptName: concept.name, // map: calculator name → DB conceptName
-              type: concept.type,
-              amount: concept.amount.toString(),
-            },
+        const payrollItemIdByEmployeeId = new Map(
+          createdPayrollItems.map((item) => [item.employeeId, item.id]),
+        );
+
+        const conceptRows = results.flatMap((result) => {
+          const payrollItemId = payrollItemIdByEmployeeId.get(
+            result.employeeId,
+          );
+
+          if (!payrollItemId) {
+            throw new Error(
+              `No se encontró el PayrollItem creado para el colaborador ${result.employeeId}`,
+            );
+          }
+
+          return result.concepts.map((concept) => ({
+            payrollItemId,
+            conceptCode: concept.code,
+            conceptName: concept.name,
+            type: concept.type,
+            amount: concept.amount.toString(),
+          }));
+        });
+
+        if (conceptRows.length > 0) {
+          await tx.payrollConceptDetail.createMany({
+            data: conceptRows,
           });
         }
       }

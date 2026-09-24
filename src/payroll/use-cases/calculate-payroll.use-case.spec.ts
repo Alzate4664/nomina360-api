@@ -27,10 +27,12 @@ describe('CalculatePayrollUseCase', () => {
       findMany: jest.fn(),
       deleteMany: jest.fn(),
       create: jest.fn(),
+      createManyAndReturn: jest.fn(),
     },
     payrollConceptDetail: {
       deleteMany: jest.fn(),
       create: jest.fn(),
+      createMany: jest.fn(),
     },
     payrollNovelty: {
       findMany: jest.fn(),
@@ -45,10 +47,12 @@ describe('CalculatePayrollUseCase', () => {
     payrollConceptDetail: {
       deleteMany: jest.fn(),
       create: jest.fn(),
+      createMany: jest.fn(),
     },
     payrollItem: {
       deleteMany: jest.fn(),
       create: jest.fn(),
+      createManyAndReturn: jest.fn(),
     },
     payrollPeriod: {
       updateMany: jest.fn(),
@@ -181,6 +185,18 @@ describe('CalculatePayrollUseCase', () => {
     });
 
     auditServiceMock.log.mockResolvedValue(undefined);
+
+    tx.payrollConceptDetail.createMany.mockResolvedValue({ count: 1 });
+
+    tx.payrollItem.createManyAndReturn.mockImplementation(
+      (args: { data: Array<{ employeeId: string }> }) =>
+        Promise.resolve(
+          args.data.map((item, index) => ({
+            id: `item-${index + 1}`,
+            employeeId: item.employeeId,
+          })),
+        ),
+    );
   });
 
   it('should reject calculation when payroll period does not exist', async () => {
@@ -360,6 +376,89 @@ describe('CalculatePayrollUseCase', () => {
     expect(employeeTwoInput.novelties).toEqual([employeeTwoNovelty]);
   });
 
+  it('should map created payroll items by employeeId regardless of returned order', async () => {
+    prismaMock.employee.findMany.mockResolvedValue([
+      {
+        id: 'employee-1',
+        companyId: 'company-1',
+        baseSalary: 3000000,
+        startDate: new Date('2025-01-01T00:00:00.000Z'),
+        status: 'ACTIVE',
+        version: 0,
+      },
+      {
+        id: 'employee-2',
+        companyId: 'company-1',
+        baseSalary: 3500000,
+        startDate: new Date('2025-02-01T00:00:00.000Z'),
+        status: 'ACTIVE',
+        version: 0,
+      },
+    ]);
+
+    payrollCalculatorMock.calculate
+      .mockReturnValueOnce({
+        earnedTotal: new Decimal('3000000'),
+        deductionsTotal: new Decimal('240000'),
+        netPay: new Decimal('2760000'),
+        concepts: [
+          {
+            code: 'EMPLOYEE_1_CONCEPT',
+            name: 'Concepto empleado 1',
+            type: 'EARNING',
+            amount: new Decimal('100000'),
+          },
+        ],
+      })
+      .mockReturnValueOnce({
+        earnedTotal: new Decimal('3500000'),
+        deductionsTotal: new Decimal('280000'),
+        netPay: new Decimal('3220000'),
+        concepts: [
+          {
+            code: 'EMPLOYEE_2_CONCEPT',
+            name: 'Concepto empleado 2',
+            type: 'EARNING',
+            amount: new Decimal('200000'),
+          },
+        ],
+      });
+
+    tx.payrollItem.createManyAndReturn.mockResolvedValueOnce([
+      {
+        id: 'item-for-employee-2',
+        employeeId: 'employee-2',
+      },
+      {
+        id: 'item-for-employee-1',
+        employeeId: 'employee-1',
+      },
+    ]);
+
+    await useCase.execute('company-1', 'user-1', 'period-1');
+
+    expect(tx.payrollConceptDetail.createMany).toHaveBeenCalledTimes(1);
+
+    expect(tx.payrollConceptDetail.createMany).toHaveBeenCalledWith({
+      data: [
+        {
+          payrollItemId: 'item-for-employee-1',
+          conceptCode: 'EMPLOYEE_1_CONCEPT',
+          conceptName: 'Concepto empleado 1',
+          type: 'EARNING',
+          amount: '100000',
+        },
+        {
+          payrollItemId: 'item-for-employee-2',
+          conceptCode: 'EMPLOYEE_2_CONCEPT',
+          conceptName: 'Concepto empleado 2',
+          type: 'EARNING',
+          amount: '200000',
+        },
+      ],
+    });
+  });
+
   it('should use severance payroll calculator for severance payroll', async () => {
     prismaMock.payrollPeriod.findFirst.mockResolvedValue({
       id: 'period-1',
@@ -463,7 +562,8 @@ describe('CalculatePayrollUseCase', () => {
 
     expect(severancePayrollCalculatorMock.calculate).not.toHaveBeenCalled();
 
-    expect(tx.payrollItem.create).not.toHaveBeenCalled();
+    expect(tx.payrollItem.createManyAndReturn).not.toHaveBeenCalled();
+    expect(tx.payrollConceptDetail.createMany).not.toHaveBeenCalled();
   });
 
   it('should use service bonus payroll calculator for first semester bonus', async () => {
@@ -574,6 +674,9 @@ describe('CalculatePayrollUseCase', () => {
       12,
       7,
     );
+
+    expect(tx.payrollItem.createManyAndReturn).toHaveBeenCalledTimes(1);
+    expect(tx.payrollConceptDetail.createMany).not.toHaveBeenCalled();
   });
 
   it('should skip employee when service bonus accrued days are zero', async () => {
@@ -598,7 +701,9 @@ describe('CalculatePayrollUseCase', () => {
     );
 
     expect(serviceBonusPayrollCalculatorMock.calculate).not.toHaveBeenCalled();
-    expect(tx.payrollItem.create).not.toHaveBeenCalled();
+
+    expect(tx.payrollItem.createManyAndReturn).not.toHaveBeenCalled();
+    expect(tx.payrollConceptDetail.createMany).not.toHaveBeenCalled();
   });
 
   describe('transaction safety', () => {
@@ -670,6 +775,8 @@ describe('CalculatePayrollUseCase', () => {
       expect(tx.payrollItem.create).not.toHaveBeenCalled();
       expect(tx.payrollConceptDetail.create).not.toHaveBeenCalled();
       expect(auditServiceMock.log).not.toHaveBeenCalled();
+      expect(tx.payrollItem.createManyAndReturn).not.toHaveBeenCalled();
+      expect(tx.payrollConceptDetail.createMany).not.toHaveBeenCalled();
     });
 
     it('should pass the transaction client to AuditService', async () => {
@@ -733,15 +840,20 @@ describe('CalculatePayrollUseCase', () => {
         },
       });
 
-      expect(tx.payrollItem.create).toHaveBeenCalled();
-      expect(tx.payrollConceptDetail.create).toHaveBeenCalled();
+      expect(tx.payrollItem.createManyAndReturn).toHaveBeenCalledTimes(1);
+      expect(tx.payrollConceptDetail.createMany).toHaveBeenCalledTimes(1);
       expect(tx.payrollPeriod.updateMany).toHaveBeenCalled();
 
       expect(prismaMock.payrollConceptDetail.deleteMany).not.toHaveBeenCalled();
       expect(prismaMock.payrollItem.deleteMany).not.toHaveBeenCalled();
       expect(prismaMock.payrollItem.create).not.toHaveBeenCalled();
+      expect(prismaMock.payrollItem.createManyAndReturn).not.toHaveBeenCalled();
       expect(prismaMock.payrollConceptDetail.create).not.toHaveBeenCalled();
+      expect(prismaMock.payrollConceptDetail.createMany).not.toHaveBeenCalled();
       expect(prismaMock.payrollPeriod.update).not.toHaveBeenCalled();
+
+      expect(tx.payrollItem.create).not.toHaveBeenCalled();
+      expect(tx.payrollConceptDetail.create).not.toHaveBeenCalled();
     });
 
     it('should propagate a transaction failure and not audit the calculation', async () => {
@@ -780,11 +892,9 @@ describe('CalculatePayrollUseCase', () => {
         },
       ]);
 
-      tx.payrollItem.create
-        .mockResolvedValueOnce({
-          id: 'item-1',
-        })
-        .mockRejectedValueOnce(new Error('constraint violation'));
+      tx.payrollItem.createManyAndReturn.mockRejectedValueOnce(
+        new Error('constraint violation'),
+      );
 
       await expect(
         useCase.executeLegacy(
@@ -796,7 +906,8 @@ describe('CalculatePayrollUseCase', () => {
         ),
       ).rejects.toThrow('constraint violation');
 
-      expect(tx.payrollItem.create).toHaveBeenCalledTimes(2);
+      expect(tx.payrollItem.createManyAndReturn).toHaveBeenCalledTimes(1);
+      expect(tx.payrollConceptDetail.createMany).not.toHaveBeenCalled();
       expect(tx.payrollPeriod.updateMany).toHaveBeenCalledTimes(1);
       expect(auditServiceMock.log).not.toHaveBeenCalled();
     });
