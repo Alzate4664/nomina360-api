@@ -42,33 +42,58 @@ export class CreatePayrollPeriodUseCase {
     const { startDate, endDate, paymentDate } =
       this.validateTemporalSemantics(dto);
 
-    const existingPeriod = await this.prisma.payrollPeriod.findFirst({
-      where: {
-        companyId,
-        year: dto.year,
-        month: dto.month,
-        payrollType: dto.payrollType,
-      },
-    });
+    const payrollPeriod = await this.prisma.$transaction(async (tx) => {
+      if (PERIODIC_PAYROLL_TYPES.has(dto.payrollType)) {
+        if (!startDate || !endDate) {
+          throw new BadRequestException(
+            `El tipo de nómina ${dto.payrollType} requiere startDate y endDate.`,
+          );
+        }
 
-    if (existingPeriod) {
-      throw new ConflictException(
-        'Ya existe un período para esa empresa, año, mes y tipo de nómina.',
-      );
-    }
+        const lockKey = `${companyId}:${dto.payrollType}`;
 
-    const payrollPeriod = await this.prisma.payrollPeriod.create({
-      data: {
-        companyId,
-        name: dto.name,
-        payrollType: dto.payrollType,
-        year: dto.year,
-        month: dto.month,
-        startDate,
-        endDate,
-        paymentDate,
-        status: PayrollStatus.DRAFT,
-      },
+        await tx.$executeRaw`
+          SELECT pg_advisory_xact_lock(
+            hashtextextended(${lockKey}, 0::bigint)
+          )
+        `;
+
+        const overlappingPeriod = await tx.payrollPeriod.findFirst({
+          where: {
+            companyId,
+            payrollType: dto.payrollType,
+            startDate: {
+              lte: endDate,
+            },
+            endDate: {
+              gte: startDate,
+            },
+          },
+          select: {
+            id: true,
+          },
+        });
+
+        if (overlappingPeriod) {
+          throw new ConflictException(
+            'Ya existe un período del mismo tipo que se solapa con el intervalo solicitado.',
+          );
+        }
+      }
+
+      return tx.payrollPeriod.create({
+        data: {
+          companyId,
+          name: dto.name,
+          payrollType: dto.payrollType,
+          year: dto.year,
+          month: dto.month,
+          startDate,
+          endDate,
+          paymentDate,
+          status: PayrollStatus.DRAFT,
+        },
+      });
     });
 
     return {

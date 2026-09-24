@@ -8,14 +8,19 @@ import { CreatePayrollPeriodUseCase } from './create-payroll-period.use-case';
 describe('CreatePayrollPeriodUseCase', () => {
   let useCase: CreatePayrollPeriodUseCase;
 
-  const prismaMock = {
-    company: {
-      findUnique: jest.fn(),
-    },
+  const txMock = {
+    $executeRaw: jest.fn(),
     payrollPeriod: {
       findFirst: jest.fn(),
       create: jest.fn(),
     },
+  };
+
+  const prismaMock = {
+    company: {
+      findUnique: jest.fn(),
+    },
+    $transaction: jest.fn(),
   };
 
   const baseDto: CreatePayrollPeriodDto = {
@@ -49,9 +54,15 @@ describe('CreatePayrollPeriodUseCase', () => {
       id: 'company-1',
     });
 
-    prismaMock.payrollPeriod.findFirst.mockResolvedValue(null);
+    txMock.$executeRaw.mockResolvedValue(1);
+    txMock.payrollPeriod.findFirst.mockResolvedValue(null);
 
-    prismaMock.payrollPeriod.create.mockResolvedValue({
+    prismaMock.$transaction.mockImplementation(
+      (callback: (tx: typeof txMock) => Promise<unknown>): Promise<unknown> =>
+        callback(txMock),
+    );
+
+    txMock.payrollPeriod.create.mockResolvedValue({
       id: 'period-1',
       companyId: 'company-1',
       name: baseDto.name,
@@ -80,8 +91,7 @@ describe('CreatePayrollPeriodUseCase', () => {
       BadRequestException,
     );
 
-    expect(prismaMock.payrollPeriod.findFirst).not.toHaveBeenCalled();
-    expect(prismaMock.payrollPeriod.create).not.toHaveBeenCalled();
+    expect(prismaMock.$transaction).not.toHaveBeenCalled();
   });
 
   it.each([
@@ -103,8 +113,7 @@ describe('CreatePayrollPeriodUseCase', () => {
         BadRequestException,
       );
 
-      expect(prismaMock.payrollPeriod.findFirst).not.toHaveBeenCalled();
-      expect(prismaMock.payrollPeriod.create).not.toHaveBeenCalled();
+      expect(prismaMock.$transaction).not.toHaveBeenCalled();
     },
   );
 
@@ -119,7 +128,7 @@ describe('CreatePayrollPeriodUseCase', () => {
       BadRequestException,
     );
 
-    expect(prismaMock.payrollPeriod.create).not.toHaveBeenCalled();
+    expect(prismaMock.$transaction).not.toHaveBeenCalled();
   });
 
   it('should reject startDate after endDate', async () => {
@@ -133,7 +142,7 @@ describe('CreatePayrollPeriodUseCase', () => {
       BadRequestException,
     );
 
-    expect(prismaMock.payrollPeriod.create).not.toHaveBeenCalled();
+    expect(prismaMock.$transaction).not.toHaveBeenCalled();
   });
 
   it('should reject paymentDate before startDate', async () => {
@@ -146,7 +155,7 @@ describe('CreatePayrollPeriodUseCase', () => {
       BadRequestException,
     );
 
-    expect(prismaMock.payrollPeriod.create).not.toHaveBeenCalled();
+    expect(prismaMock.$transaction).not.toHaveBeenCalled();
   });
 
   it('should reject year that does not match startDate', async () => {
@@ -159,7 +168,7 @@ describe('CreatePayrollPeriodUseCase', () => {
       BadRequestException,
     );
 
-    expect(prismaMock.payrollPeriod.create).not.toHaveBeenCalled();
+    expect(prismaMock.$transaction).not.toHaveBeenCalled();
   });
 
   it('should reject month that does not match startDate', async () => {
@@ -172,11 +181,11 @@ describe('CreatePayrollPeriodUseCase', () => {
       BadRequestException,
     );
 
-    expect(prismaMock.payrollPeriod.create).not.toHaveBeenCalled();
+    expect(prismaMock.$transaction).not.toHaveBeenCalled();
   });
 
-  it('should reject duplicate legacy period identity', async () => {
-    prismaMock.payrollPeriod.findFirst.mockResolvedValueOnce({
+  it('should reject an overlapping periodic payroll interval', async () => {
+    txMock.payrollPeriod.findFirst.mockResolvedValueOnce({
       id: 'existing-period',
     });
 
@@ -184,13 +193,61 @@ describe('CreatePayrollPeriodUseCase', () => {
       ConflictException,
     );
 
-    expect(prismaMock.payrollPeriod.create).not.toHaveBeenCalled();
+    expect(txMock.payrollPeriod.findFirst).toHaveBeenCalledWith({
+      where: {
+        companyId: 'company-1',
+        payrollType: PayrollType.MONTHLY,
+        startDate: {
+          lte: new Date('2026-08-31T00:00:00.000Z'),
+        },
+        endDate: {
+          gte: new Date('2026-08-01T00:00:00.000Z'),
+        },
+      },
+      select: {
+        id: true,
+      },
+    });
+
+    expect(txMock.payrollPeriod.create).not.toHaveBeenCalled();
+  });
+
+  it('should allow a non-overlapping semimonthly interval in the same month', async () => {
+    const dto: CreatePayrollPeriodDto = {
+      ...baseDto,
+      name: 'Segunda quincena Agosto 2026',
+      payrollType: PayrollType.SEMIMONTHLY,
+      startDate: '2026-08-16',
+      endDate: '2026-08-31',
+    };
+
+    await useCase.execute('company-1', dto);
+
+    expect(txMock.$executeRaw).toHaveBeenCalledTimes(1);
+
+    expect(txMock.payrollPeriod.findFirst).toHaveBeenCalledWith({
+      where: {
+        companyId: 'company-1',
+        payrollType: PayrollType.SEMIMONTHLY,
+        startDate: {
+          lte: new Date('2026-08-31T00:00:00.000Z'),
+        },
+        endDate: {
+          gte: new Date('2026-08-16T00:00:00.000Z'),
+        },
+      },
+      select: {
+        id: true,
+      },
+    });
+
+    expect(txMock.payrollPeriod.create).toHaveBeenCalledTimes(1);
   });
 
   it('should create a periodic payroll with normalized UTC dates', async () => {
     const result = await useCase.execute('company-1', baseDto);
 
-    expect(prismaMock.payrollPeriod.create).toHaveBeenCalledWith({
+    expect(txMock.payrollPeriod.create).toHaveBeenCalledWith({
       data: {
         companyId: 'company-1',
         name: 'Nómina Agosto 2026',
@@ -204,6 +261,8 @@ describe('CreatePayrollPeriodUseCase', () => {
       },
     });
 
+    expect(txMock.$executeRaw).toHaveBeenCalledTimes(1);
+
     expect(result.id).toBe('period-1');
     expect(result.startDate).toEqual(new Date('2026-08-01T00:00:00.000Z'));
   });
@@ -216,7 +275,7 @@ describe('CreatePayrollPeriodUseCase', () => {
       month: 8,
     };
 
-    prismaMock.payrollPeriod.create.mockResolvedValueOnce({
+    txMock.payrollPeriod.create.mockResolvedValueOnce({
       id: 'extraordinary-period',
       companyId: 'company-1',
       name: dto.name,
@@ -239,7 +298,7 @@ describe('CreatePayrollPeriodUseCase', () => {
 
     const result = await useCase.execute('company-1', dto);
 
-    expect(prismaMock.payrollPeriod.create).toHaveBeenCalledWith({
+    expect(txMock.payrollPeriod.create).toHaveBeenCalledWith({
       data: {
         companyId: 'company-1',
         name: 'Nómina extraordinaria',
@@ -252,6 +311,9 @@ describe('CreatePayrollPeriodUseCase', () => {
         status: PayrollStatus.DRAFT,
       },
     });
+
+    expect(txMock.$executeRaw).not.toHaveBeenCalled();
+    expect(txMock.payrollPeriod.findFirst).not.toHaveBeenCalled();
 
     expect(result.id).toBe('extraordinary-period');
   });
