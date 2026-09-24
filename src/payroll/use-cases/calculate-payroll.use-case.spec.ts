@@ -291,6 +291,75 @@ describe('CalculatePayrollUseCase', () => {
     expect(severancePayrollCalculatorMock.calculate).not.toHaveBeenCalled();
   });
 
+  it('should batch-load payroll novelties once and group them by employee', async () => {
+    prismaMock.employee.findMany.mockResolvedValue([
+      {
+        id: 'employee-1',
+        companyId: 'company-1',
+        baseSalary: 3000000,
+        startDate: new Date('2025-01-01T00:00:00.000Z'),
+        status: 'ACTIVE',
+        version: 0,
+      },
+      {
+        id: 'employee-2',
+        companyId: 'company-1',
+        baseSalary: 3500000,
+        startDate: new Date('2025-02-01T00:00:00.000Z'),
+        status: 'ACTIVE',
+        version: 0,
+      },
+    ]);
+
+    const employeeOneNovelty = {
+      id: 'novelty-1',
+      companyId: 'company-1',
+      employeeId: 'employee-1',
+      payrollPeriodId: 'period-1',
+    };
+
+    const employeeTwoNovelty = {
+      id: 'novelty-2',
+      companyId: 'company-1',
+      employeeId: 'employee-2',
+      payrollPeriodId: 'period-1',
+    };
+
+    prismaMock.payrollNovelty.findMany.mockResolvedValue([
+      employeeOneNovelty,
+      employeeTwoNovelty,
+    ]);
+
+    payrollCalculatorMock.calculate.mockReturnValue({
+      earnedTotal: new Decimal('3000000'),
+      deductionsTotal: new Decimal('240000'),
+      netPay: new Decimal('2760000'),
+      concepts: [],
+    });
+
+    await useCase.execute('company-1', 'user-1', 'period-1');
+
+    expect(prismaMock.payrollNovelty.findMany).toHaveBeenCalledTimes(1);
+
+    expect(prismaMock.payrollNovelty.findMany).toHaveBeenCalledWith({
+      where: {
+        companyId: 'company-1',
+        payrollPeriodId: 'period-1',
+        employeeId: {
+          in: ['employee-1', 'employee-2'],
+        },
+      },
+    });
+
+    expect(payrollCalculateMock).toHaveBeenCalledTimes(2);
+
+    const [employeeOneInput] = payrollCalculateMock.mock.calls[0];
+    const [employeeTwoInput] = payrollCalculateMock.mock.calls[1];
+
+    expect(employeeOneInput.novelties).toEqual([employeeOneNovelty]);
+    expect(employeeTwoInput.novelties).toEqual([employeeTwoNovelty]);
+  });
+
   it('should use severance payroll calculator for severance payroll', async () => {
     prismaMock.payrollPeriod.findFirst.mockResolvedValue({
       id: 'period-1',
@@ -358,6 +427,7 @@ describe('CalculatePayrollUseCase', () => {
 
     expect(prismaMock.$transaction).toHaveBeenCalledTimes(1);
     expect(payrollCalculatorMock.calculate).not.toHaveBeenCalled();
+    expect(prismaMock.payrollNovelty.findMany).not.toHaveBeenCalled();
   });
 
   it('should skip employee when severance accrued days are zero', async () => {
@@ -457,6 +527,7 @@ describe('CalculatePayrollUseCase', () => {
 
     expect(payrollCalculatorMock.calculate).not.toHaveBeenCalled();
     expect(severancePayrollCalculatorMock.calculate).not.toHaveBeenCalled();
+    expect(prismaMock.payrollNovelty.findMany).not.toHaveBeenCalled();
   });
 
   it('should use service bonus payroll calculator for second semester bonus', async () => {

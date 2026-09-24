@@ -6,7 +6,12 @@ import {
 import { AuditService } from '../../audit/audit.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { PayrollCalculatorService } from '../payroll-calculator.service';
-import { PayrollStatus, PayrollType, type PayrollPeriod } from '@prisma/client';
+import {
+  PayrollStatus,
+  PayrollType,
+  type PayrollNovelty,
+  type PayrollPeriod,
+} from '@prisma/client';
 import { AccruedDaysCalculator } from '../calculator/accrued-days.calculator';
 import { SeverancePayrollCalculator } from '../calculator/severance-payroll.calculator';
 import { ServiceBonusPayrollCalculator } from '../calculator/service-bonus-payroll.calculator';
@@ -139,17 +144,41 @@ export class CalculatePayrollUseCase {
 
     const existingItemIds = existingItems.map((item) => item.id);
 
+    const shouldLoadNovelties =
+      payrollType !== PayrollType.SEVERANCE &&
+      payrollType !== PayrollType.BONUS;
+
+    const employeeIds = employees.map((employee) => employee.id);
+
+    const novelties: PayrollNovelty[] = shouldLoadNovelties
+      ? await this.prisma.payrollNovelty.findMany({
+          where: {
+            companyId,
+            payrollPeriodId: period.id,
+            employeeId: {
+              in: employeeIds,
+            },
+          },
+        })
+      : [];
+
+    const noveltiesByEmployeeId = new Map<string, PayrollNovelty[]>();
+
+    for (const novelty of novelties) {
+      const employeeNovelties = noveltiesByEmployeeId.get(novelty.employeeId);
+
+      if (employeeNovelties) {
+        employeeNovelties.push(novelty);
+      } else {
+        noveltiesByEmployeeId.set(novelty.employeeId, [novelty]);
+      }
+    }
+
     // Run all calculations in memory — no DB writes until the transaction opens.
     const results: CalculatedEmployeeResult[] = [];
 
     for (const employee of employees) {
-      const novelties = await this.prisma.payrollNovelty.findMany({
-        where: {
-          companyId,
-          employeeId: employee.id,
-          payrollPeriodId: period.id,
-        },
-      });
+      const employeeNovelties = noveltiesByEmployeeId.get(employee.id) ?? [];
 
       const baseSalary = toDecimal(employee.baseSalary);
 
@@ -192,7 +221,7 @@ export class CalculatePayrollUseCase {
         calculation = this.calculator.calculate({
           baseSalary,
           workedDays: 30,
-          novelties,
+          novelties: employeeNovelties,
         });
       }
 
