@@ -3,10 +3,23 @@ import {
   ConflictException,
   Injectable,
 } from '@nestjs/common';
-import { PayrollStatus } from '@prisma/client';
+import { PayrollStatus, PayrollType } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreatePayrollPeriodDto } from '../dto/create-payroll-period.dto';
 import { PayrollPeriodResponseDto } from '../dto/payroll-period-response.dto';
+
+const PERIODIC_PAYROLL_TYPES = new Set<PayrollType>([
+  PayrollType.MONTHLY,
+  PayrollType.SEMIMONTHLY,
+  PayrollType.WEEKLY,
+  PayrollType.BIWEEKLY,
+]);
+
+type ParsedPayrollPeriodDates = {
+  startDate: Date | null;
+  endDate: Date | null;
+  paymentDate: Date | null;
+};
 
 @Injectable()
 export class CreatePayrollPeriodUseCase {
@@ -26,49 +39,61 @@ export class CreatePayrollPeriodUseCase {
       throw new BadRequestException('La empresa no existe.');
     }
 
-    const existingPeriod = await this.prisma.payrollPeriod.findFirst({
-      where: {
-        companyId,
-        year: dto.year,
-        month: dto.month,
-        payrollType: dto.payrollType,
-      },
-    });
+    const { startDate, endDate, paymentDate } =
+      this.validateTemporalSemantics(dto);
 
-    if (existingPeriod) {
-      throw new ConflictException(
-        'Ya existe un período para esa empresa, año, mes y tipo de nómina.',
-      );
-    }
+    const payrollPeriod = await this.prisma.$transaction(async (tx) => {
+      if (PERIODIC_PAYROLL_TYPES.has(dto.payrollType)) {
+        if (!startDate || !endDate) {
+          throw new BadRequestException(
+            `El tipo de nómina ${dto.payrollType} requiere startDate y endDate.`,
+          );
+        }
 
-    const startDate = dto.startDate ? new Date(dto.startDate) : null;
-    const endDate = dto.endDate ? new Date(dto.endDate) : null;
-    const paymentDate = dto.paymentDate ? new Date(dto.paymentDate) : null;
+        const lockKey = `${companyId}:${dto.payrollType}`;
 
-    if (startDate && endDate && startDate > endDate) {
-      throw new BadRequestException(
-        'La fecha inicial no puede ser posterior a la fecha final.',
-      );
-    }
+        await tx.$executeRaw`
+          SELECT pg_advisory_xact_lock(
+            hashtextextended(${lockKey}, 0::bigint)
+          )
+        `;
 
-    if (startDate && paymentDate && paymentDate < startDate) {
-      throw new BadRequestException(
-        'La fecha de pago no puede ser anterior a la fecha inicial.',
-      );
-    }
+        const overlappingPeriod = await tx.payrollPeriod.findFirst({
+          where: {
+            companyId,
+            payrollType: dto.payrollType,
+            startDate: {
+              lte: endDate,
+            },
+            endDate: {
+              gte: startDate,
+            },
+          },
+          select: {
+            id: true,
+          },
+        });
 
-    const payrollPeriod = await this.prisma.payrollPeriod.create({
-      data: {
-        companyId,
-        name: dto.name,
-        payrollType: dto.payrollType,
-        year: dto.year,
-        month: dto.month,
-        startDate,
-        endDate,
-        paymentDate,
-        status: PayrollStatus.DRAFT,
-      },
+        if (overlappingPeriod) {
+          throw new ConflictException(
+            'Ya existe un período del mismo tipo que se solapa con el intervalo solicitado.',
+          );
+        }
+      }
+
+      return tx.payrollPeriod.create({
+        data: {
+          companyId,
+          name: dto.name,
+          payrollType: dto.payrollType,
+          year: dto.year,
+          month: dto.month,
+          startDate,
+          endDate,
+          paymentDate,
+          status: PayrollStatus.DRAFT,
+        },
+      });
     });
 
     return {
@@ -85,5 +110,91 @@ export class CreatePayrollPeriodUseCase {
       createdAt: payrollPeriod.createdAt,
       updatedAt: payrollPeriod.updatedAt,
     };
+  }
+
+  private validateTemporalSemantics(
+    dto: CreatePayrollPeriodDto,
+  ): ParsedPayrollPeriodDates {
+    const hasStartDate = dto.startDate !== undefined;
+    const hasEndDate = dto.endDate !== undefined;
+    const requiresInterval = PERIODIC_PAYROLL_TYPES.has(dto.payrollType);
+
+    if (requiresInterval && (!hasStartDate || !hasEndDate)) {
+      throw new BadRequestException(
+        `El tipo de nómina ${dto.payrollType} requiere startDate y endDate.`,
+      );
+    }
+
+    if (hasStartDate !== hasEndDate) {
+      throw new BadRequestException(
+        'startDate y endDate deben enviarse juntos.',
+      );
+    }
+
+    const startDate = dto.startDate
+      ? this.parseDateOnly(dto.startDate, 'startDate')
+      : null;
+
+    const endDate = dto.endDate
+      ? this.parseDateOnly(dto.endDate, 'endDate')
+      : null;
+
+    const paymentDate = dto.paymentDate
+      ? this.parseDateOnly(dto.paymentDate, 'paymentDate')
+      : null;
+
+    if (startDate && endDate && startDate > endDate) {
+      throw new BadRequestException(
+        'La fecha inicial no puede ser posterior a la fecha final.',
+      );
+    }
+
+    if (
+      startDate &&
+      (startDate.getUTCFullYear() !== dto.year ||
+        startDate.getUTCMonth() + 1 !== dto.month)
+    ) {
+      throw new BadRequestException(
+        'El año y el mes deben corresponder a la fecha inicial del período.',
+      );
+    }
+
+    if (startDate && paymentDate && paymentDate < startDate) {
+      throw new BadRequestException(
+        'La fecha de pago no puede ser anterior a la fecha inicial.',
+      );
+    }
+
+    return {
+      startDate,
+      endDate,
+      paymentDate,
+    };
+  }
+
+  private parseDateOnly(value: string, fieldName: string): Date {
+    const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+
+    if (!match) {
+      throw new BadRequestException(
+        `${fieldName} debe tener formato YYYY-MM-DD.`,
+      );
+    }
+
+    const year = Number(match[1]);
+    const month = Number(match[2]);
+    const day = Number(match[3]);
+
+    const date = new Date(Date.UTC(year, month - 1, day));
+
+    if (
+      date.getUTCFullYear() !== year ||
+      date.getUTCMonth() + 1 !== month ||
+      date.getUTCDate() !== day
+    ) {
+      throw new BadRequestException(`${fieldName} no es una fecha válida.`);
+    }
+
+    return date;
   }
 }

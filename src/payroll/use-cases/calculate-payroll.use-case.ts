@@ -1,8 +1,12 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { AuditService } from '../../audit/audit.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { PayrollCalculatorService } from '../payroll-calculator.service';
-import { PayrollStatus, PayrollType } from '@prisma/client';
+import { PayrollStatus, PayrollType, type PayrollPeriod } from '@prisma/client';
 import { AccruedDaysCalculator } from '../calculator/accrued-days.calculator';
 import { SeverancePayrollCalculator } from '../calculator/severance-payroll.calculator';
 import { ServiceBonusPayrollCalculator } from '../calculator/service-bonus-payroll.calculator';
@@ -41,14 +45,62 @@ export class CalculatePayrollUseCase {
   async execute(
     companyId: string,
     currentUserId: string,
+    payrollPeriodId: string,
+  ) {
+    const period = await this.prisma.payrollPeriod.findFirst({
+      where: {
+        id: payrollPeriodId,
+        companyId,
+      },
+    });
+
+    if (!period) {
+      throw new NotFoundException('Periodo de nómina no encontrado');
+    }
+
+    return this.calculatePeriod(companyId, currentUserId, period);
+  }
+
+  async executeLegacy(
+    companyId: string,
+    currentUserId: string,
     year: number,
     month: number,
     payrollType: PayrollType,
   ) {
-    // ─── PHASE 1: reads, guards, and in-memory calculations ────────────────────
-    // Reads and calculations stay outside the transaction.
-    // The only intentional write in this phase is creating a missing DRAFT period.
+    const periods = await this.prisma.payrollPeriod.findMany({
+      where: {
+        companyId,
+        year,
+        month,
+        payrollType,
+      },
+      take: 2,
+    });
 
+    if (periods.length === 0) {
+      throw new NotFoundException(
+        'Periodo de nómina no encontrado. Debe crearse antes de calcularlo.',
+      );
+    }
+
+    if (periods.length > 1) {
+      throw new BadRequestException(
+        'Existen múltiples períodos de nómina para los datos enviados. Use el identificador del período para calcularlo.',
+      );
+    }
+
+    return this.calculatePeriod(companyId, currentUserId, periods[0]);
+  }
+
+  private async calculatePeriod(
+    companyId: string,
+    currentUserId: string,
+    period: PayrollPeriod,
+  ) {
+    const { year, month, payrollType } = period;
+
+    // PHASE 1: read-only guards and in-memory calculations.
     const allowedStatuses: PayrollStatus[] = [
       PayrollStatus.DRAFT,
       PayrollStatus.COLLECTING_NOVELTIES,
@@ -56,21 +108,10 @@ export class CalculatePayrollUseCase {
       PayrollStatus.REOPENED,
     ];
 
-    const existingPeriod = await this.prisma.payrollPeriod.findFirst({
-      where: {
-        companyId,
-        year,
-        month,
-        payrollType,
-      },
-    });
-
-    if (existingPeriod) {
-      if (!allowedStatuses.includes(existingPeriod.status)) {
-        throw new BadRequestException(
-          `El período en estado ${existingPeriod.status} no puede calcularse ni recalcularse`,
-        );
-      }
+    if (!allowedStatuses.includes(period.status)) {
+      throw new BadRequestException(
+        `El período en estado ${period.status} no puede calcularse ni recalcularse`,
+      );
     }
 
     const employees = await this.prisma.employee.findMany({
@@ -84,23 +125,6 @@ export class CalculatePayrollUseCase {
       throw new BadRequestException(
         'No existen colaboradores activos para calcular la nómina',
       );
-    }
-
-    // Create the period in DRAFT if it does not exist yet.
-    // It remains outside the transaction intentionally so a failed first
-    // calculation leaves an identifiable DRAFT period without financial results.
-    let period = existingPeriod;
-
-    if (!period) {
-      period = await this.prisma.payrollPeriod.create({
-        data: {
-          companyId,
-          year,
-          month,
-          payrollType,
-          status: PayrollStatus.DRAFT,
-        },
-      });
     }
 
     // Collect existing item IDs so the transaction can delete them atomically.

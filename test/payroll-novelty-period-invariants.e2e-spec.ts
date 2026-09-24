@@ -124,11 +124,10 @@ describe('Payroll novelty period invariants (e2e)', () => {
     return noveltyId;
   };
 
-  const calculatePeriod = async (month: number) => {
+  const calculatePeriod = async (periodId: string) => {
     await request(httpServer)
-      .post('/payroll/calculate')
+      .post(`/payroll/periods/${periodId}/calculate`)
       .set('Authorization', `Bearer ${ownerToken}`)
-      .send({ year: TEST_YEAR, month, payrollType: TEST_TYPE })
       .expect(201);
   };
 
@@ -237,7 +236,7 @@ describe('Payroll novelty period invariants (e2e)', () => {
     const month = TEST_MONTHS[0];
     const periodId = await createPeriod(month);
     await createBonusNovelty(periodId, 'Novedad inicial E2E');
-    await calculatePeriod(month);
+    await calculatePeriod(periodId);
 
     const before = await getCalculatedSnapshot(periodId);
     expect(before.period.status).toBe(PayrollStatus.CALCULATED);
@@ -270,7 +269,7 @@ describe('Payroll novelty period invariants (e2e)', () => {
       periodId,
       'Novedad a eliminar E2E',
     );
-    await calculatePeriod(month);
+    await calculatePeriod(periodId);
 
     const before = await getCalculatedSnapshot(periodId);
     expect(before.period.status).toBe(PayrollStatus.CALCULATED);
@@ -306,7 +305,7 @@ describe('Payroll novelty period invariants (e2e)', () => {
     const month = TEST_MONTHS[2];
     const periodId = await createPeriod(month);
     await createBonusNovelty(periodId, 'Novedad inicial rollback CREATE');
-    await calculatePeriod(month);
+    await calculatePeriod(periodId);
 
     const before = await getCalculatedSnapshot(periodId);
     const noveltyCountBefore = await prisma.payrollNovelty.count({
@@ -373,7 +372,7 @@ describe('Payroll novelty period invariants (e2e)', () => {
       periodId,
       'Novedad inicial rollback DELETE',
     );
-    await calculatePeriod(month);
+    await calculatePeriod(periodId);
 
     const before = await getCalculatedSnapshot(periodId);
     const prepareAuditCountBefore = await prisma.auditLog.count({

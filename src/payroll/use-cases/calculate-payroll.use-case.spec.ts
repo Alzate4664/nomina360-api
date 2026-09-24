@@ -1,5 +1,5 @@
 import { PayrollStatus, PayrollType } from '@prisma/client';
-import { BadRequestException } from '@nestjs/common';
+import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { AuditService } from '../../audit/audit.service';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -16,6 +16,7 @@ describe('CalculatePayrollUseCase', () => {
   const prismaMock = {
     payrollPeriod: {
       findFirst: jest.fn(),
+      findMany: jest.fn(),
       create: jest.fn(),
       update: jest.fn(),
     },
@@ -129,9 +130,7 @@ describe('CalculatePayrollUseCase', () => {
 
     useCase = module.get<CalculatePayrollUseCase>(CalculatePayrollUseCase);
 
-    prismaMock.payrollPeriod.findFirst.mockResolvedValue(null);
-
-    prismaMock.payrollPeriod.create.mockResolvedValue({
+    prismaMock.payrollPeriod.findFirst.mockResolvedValue({
       id: 'period-1',
       companyId: 'company-1',
       year: 2026,
@@ -140,6 +139,14 @@ describe('CalculatePayrollUseCase', () => {
       status: PayrollStatus.DRAFT,
       version: 0,
     });
+
+    prismaMock.payrollPeriod.findMany.mockImplementation(
+      async (args: unknown): Promise<unknown[]> => {
+        const period: unknown = await prismaMock.payrollPeriod.findFirst(args);
+
+        return period === null || period === undefined ? [] : [period];
+      },
+    );
 
     prismaMock.payrollPeriod.update.mockResolvedValue({
       id: 'period-1',
@@ -176,6 +183,76 @@ describe('CalculatePayrollUseCase', () => {
     auditServiceMock.log.mockResolvedValue(undefined);
   });
 
+  it('should reject calculation when payroll period does not exist', async () => {
+    prismaMock.payrollPeriod.findFirst.mockResolvedValueOnce(null);
+
+    await expect(
+      useCase.execute('company-1', 'user-1', 'missing-period'),
+    ).rejects.toBeInstanceOf(NotFoundException);
+
+    expect(prismaMock.payrollPeriod.findFirst).toHaveBeenCalledWith({
+      where: {
+        id: 'missing-period',
+        companyId: 'company-1',
+      },
+    });
+
+    expect(prismaMock.payrollPeriod.create).not.toHaveBeenCalled();
+    expect(prismaMock.employee.findMany).not.toHaveBeenCalled();
+    expect(prismaMock.$transaction).not.toHaveBeenCalled();
+  });
+
+  it('should reject legacy calculation when payroll period does not exist', async () => {
+    prismaMock.payrollPeriod.findMany.mockResolvedValueOnce([]);
+
+    await expect(
+      useCase.executeLegacy(
+        'company-1',
+        'user-1',
+        2026,
+        12,
+        PayrollType.MONTHLY,
+      ),
+    ).rejects.toBeInstanceOf(NotFoundException);
+
+    expect(prismaMock.employee.findMany).not.toHaveBeenCalled();
+    expect(prismaMock.$transaction).not.toHaveBeenCalled();
+  });
+
+  it('should reject legacy calculation when period lookup is ambiguous', async () => {
+    prismaMock.payrollPeriod.findMany.mockResolvedValueOnce([
+      {
+        id: 'period-first-half',
+      },
+      {
+        id: 'period-second-half',
+      },
+    ]);
+
+    await expect(
+      useCase.executeLegacy(
+        'company-1',
+        'user-1',
+        2026,
+        8,
+        PayrollType.SEMIMONTHLY,
+      ),
+    ).rejects.toBeInstanceOf(BadRequestException);
+
+    expect(prismaMock.payrollPeriod.findMany).toHaveBeenCalledWith({
+      where: {
+        companyId: 'company-1',
+        year: 2026,
+        month: 8,
+        payrollType: PayrollType.SEMIMONTHLY,
+      },
+      take: 2,
+    });
+
+    expect(prismaMock.employee.findMany).not.toHaveBeenCalled();
+    expect(prismaMock.$transaction).not.toHaveBeenCalled();
+  });
+
   it('should use regular payroll calculator for monthly payroll', async () => {
     payrollCalculatorMock.calculate.mockReturnValue({
       earnedTotal: new Decimal('3000000'),
@@ -191,7 +268,16 @@ describe('CalculatePayrollUseCase', () => {
       ],
     });
 
-    await useCase.execute('company-1', 'user-1', 2026, 12, PayrollType.MONTHLY);
+    await useCase.execute('company-1', 'user-1', 'period-1');
+
+    expect(prismaMock.payrollPeriod.findFirst).toHaveBeenCalledWith({
+      where: {
+        id: 'period-1',
+        companyId: 'company-1',
+      },
+    });
+
+    expect(prismaMock.payrollPeriod.create).not.toHaveBeenCalled();
 
     expect(payrollCalculateMock).toHaveBeenCalledTimes(1);
     const [regularPayrollInput] = payrollCalculateMock.mock.calls[0];
@@ -206,7 +292,7 @@ describe('CalculatePayrollUseCase', () => {
   });
 
   it('should use severance payroll calculator for severance payroll', async () => {
-    prismaMock.payrollPeriod.create.mockResolvedValue({
+    prismaMock.payrollPeriod.findFirst.mockResolvedValue({
       id: 'period-1',
       companyId: 'company-1',
       year: 2026,
@@ -249,7 +335,7 @@ describe('CalculatePayrollUseCase', () => {
       ],
     });
 
-    await useCase.execute(
+    await useCase.executeLegacy(
       'company-1',
       'user-1',
       2026,
@@ -275,7 +361,7 @@ describe('CalculatePayrollUseCase', () => {
   });
 
   it('should skip employee when severance accrued days are zero', async () => {
-    prismaMock.payrollPeriod.create.mockResolvedValue({
+    prismaMock.payrollPeriod.findFirst.mockResolvedValue({
       id: 'period-1',
       companyId: 'company-1',
       year: 2026,
@@ -297,7 +383,7 @@ describe('CalculatePayrollUseCase', () => {
 
     accruedDaysCalculatorMock.calculate.mockReturnValue(0);
 
-    await useCase.execute(
+    await useCase.executeLegacy(
       'company-1',
       'user-1',
       2026,
@@ -311,7 +397,7 @@ describe('CalculatePayrollUseCase', () => {
   });
 
   it('should use service bonus payroll calculator for first semester bonus', async () => {
-    prismaMock.payrollPeriod.create.mockResolvedValue({
+    prismaMock.payrollPeriod.findFirst.mockResolvedValue({
       id: 'period-1',
       companyId: 'company-1',
       year: 2026,
@@ -347,7 +433,13 @@ describe('CalculatePayrollUseCase', () => {
       ],
     });
 
-    await useCase.execute('company-1', 'user-1', 2026, 6, PayrollType.BONUS);
+    await useCase.executeLegacy(
+      'company-1',
+      'user-1',
+      2026,
+      6,
+      PayrollType.BONUS,
+    );
 
     expect(accruedDaysCalculatorMock.calculate).toHaveBeenCalledWith(
       new Date('2025-01-01T00:00:00.000Z'),
@@ -368,7 +460,7 @@ describe('CalculatePayrollUseCase', () => {
   });
 
   it('should use service bonus payroll calculator for second semester bonus', async () => {
-    prismaMock.payrollPeriod.create.mockResolvedValue({
+    prismaMock.payrollPeriod.findFirst.mockResolvedValue({
       id: 'period-1',
       companyId: 'company-1',
       year: 2026,
@@ -397,7 +489,13 @@ describe('CalculatePayrollUseCase', () => {
       concepts: [],
     });
 
-    await useCase.execute('company-1', 'user-1', 2026, 12, PayrollType.BONUS);
+    await useCase.executeLegacy(
+      'company-1',
+      'user-1',
+      2026,
+      12,
+      PayrollType.BONUS,
+    );
 
     expect(accruedDaysCalculatorMock.calculate).toHaveBeenCalledWith(
       new Date('2025-01-01T00:00:00.000Z'),
@@ -408,9 +506,25 @@ describe('CalculatePayrollUseCase', () => {
   });
 
   it('should skip employee when service bonus accrued days are zero', async () => {
+    prismaMock.payrollPeriod.findFirst.mockResolvedValueOnce({
+      id: 'period-1',
+      companyId: 'company-1',
+      year: 2026,
+      month: 6,
+      payrollType: PayrollType.BONUS,
+      status: PayrollStatus.DRAFT,
+      version: 0,
+    });
+
     accruedDaysCalculatorMock.calculate.mockReturnValue(0);
 
-    await useCase.execute('company-1', 'user-1', 2026, 6, PayrollType.BONUS);
+    await useCase.executeLegacy(
+      'company-1',
+      'user-1',
+      2026,
+      6,
+      PayrollType.BONUS,
+    );
 
     expect(serviceBonusPayrollCalculatorMock.calculate).not.toHaveBeenCalled();
     expect(tx.payrollItem.create).not.toHaveBeenCalled();
@@ -449,7 +563,13 @@ describe('CalculatePayrollUseCase', () => {
       tx.payrollPeriod.updateMany.mockResolvedValueOnce({ count: 0 });
 
       await expect(
-        useCase.execute('company-1', 'user-1', 2026, 12, PayrollType.MONTHLY),
+        useCase.executeLegacy(
+          'company-1',
+          'user-1',
+          2026,
+          12,
+          PayrollType.MONTHLY,
+        ),
       ).rejects.toBeInstanceOf(BadRequestException);
 
       expect(tx.payrollPeriod.updateMany).toHaveBeenCalledWith({
@@ -482,7 +602,7 @@ describe('CalculatePayrollUseCase', () => {
     });
 
     it('should pass the transaction client to AuditService', async () => {
-      await useCase.execute(
+      await useCase.executeLegacy(
         'company-1',
         'user-1',
         2026,
@@ -518,7 +638,7 @@ describe('CalculatePayrollUseCase', () => {
         },
       ]);
 
-      await useCase.execute(
+      await useCase.executeLegacy(
         'company-1',
         'user-1',
         2026,
@@ -557,7 +677,13 @@ describe('CalculatePayrollUseCase', () => {
       prismaMock.$transaction.mockRejectedValueOnce(new Error('DB failure'));
 
       await expect(
-        useCase.execute('company-1', 'user-1', 2026, 12, PayrollType.MONTHLY),
+        useCase.executeLegacy(
+          'company-1',
+          'user-1',
+          2026,
+          12,
+          PayrollType.MONTHLY,
+        ),
       ).rejects.toThrow('DB failure');
 
       expect(auditServiceMock.log).not.toHaveBeenCalled();
@@ -590,7 +716,13 @@ describe('CalculatePayrollUseCase', () => {
         .mockRejectedValueOnce(new Error('constraint violation'));
 
       await expect(
-        useCase.execute('company-1', 'user-1', 2026, 12, PayrollType.MONTHLY),
+        useCase.executeLegacy(
+          'company-1',
+          'user-1',
+          2026,
+          12,
+          PayrollType.MONTHLY,
+        ),
       ).rejects.toThrow('constraint violation');
 
       expect(tx.payrollItem.create).toHaveBeenCalledTimes(2);
@@ -602,7 +734,13 @@ describe('CalculatePayrollUseCase', () => {
       prismaMock.employee.findMany.mockResolvedValue([]);
 
       await expect(
-        useCase.execute('company-1', 'user-1', 2026, 12, PayrollType.MONTHLY),
+        useCase.executeLegacy(
+          'company-1',
+          'user-1',
+          2026,
+          12,
+          PayrollType.MONTHLY,
+        ),
       ).rejects.toBeInstanceOf(BadRequestException);
 
       expect(prismaMock.$transaction).not.toHaveBeenCalled();

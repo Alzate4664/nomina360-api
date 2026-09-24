@@ -17,9 +17,14 @@ describe('Nomina360 API (e2e)', () => {
   let createdNoveltyId: string | undefined;
   let terminationEmployeeId: string | undefined;
   let employmentTerminationId: string | undefined;
+
   let rollbackFirstPeriodId: string | undefined;
   let rollbackRecalculationPeriodId: string | undefined;
   let lifecyclePayrollPeriodId: string | undefined;
+  let temporalPayrollPeriodId: string | undefined;
+
+  const semimonthlyTemporalPeriodIds: string[] = [];
+  const concurrentTemporalPeriodIds: string[] = [];
 
   const uniqueSuffix = `${Date.now()}-${Math.floor(Math.random() * 10000)}`;
 
@@ -219,6 +224,29 @@ if (rollbackPeriodIds.length > 0) {
         });
       }
 
+      if (temporalPayrollPeriodId) {
+        await prisma.payrollPeriod.deleteMany({
+          where: {
+            id: temporalPayrollPeriodId,
+          },
+        });
+      }
+
+      const temporalTestPeriodIds = [
+        ...semimonthlyTemporalPeriodIds,
+        ...concurrentTemporalPeriodIds,
+      ];
+
+      if (temporalTestPeriodIds.length > 0) {
+        await prisma.payrollPeriod.deleteMany({
+          where: {
+            id: {
+              in: temporalTestPeriodIds,
+            },
+          },
+        });
+      }
+
       if (createdEmployeeId) {
         await prisma.employee.deleteMany({
           where: {
@@ -239,6 +267,9 @@ if (rollbackPeriodIds.length > 0) {
         createdUserId,
         createdEmployeeId,
         createdPayrollPeriodId,
+        temporalPayrollPeriodId,
+        ...semimonthlyTemporalPeriodIds,
+        ...concurrentTemporalPeriodIds,
         createdNoveltyId,
         terminationEmployeeId,
         employmentTerminationId,
@@ -545,6 +576,190 @@ if (rollbackPeriodIds.length > 0) {
     createdPayrollPeriodId = response.body.id;
   });
 
+    it('POST /payroll/periods debe rechazar una nómina MONTHLY sin intervalo explícito', async () => {
+    await request(app.getHttpServer())
+      .post('/payroll/periods')
+      .set('Authorization', `Bearer ${ownerToken}`)
+      .send({
+        name: `Período mensual inválido E2E ${uniqueSuffix}`,
+        payrollType: 'MONTHLY',
+        year: 2099,
+        month: 8,
+      })
+      .expect(400);
+  });
+
+  it('POST /payroll/periods debe crear una nómina MONTHLY con intervalo explícito', async () => {
+    const response = await request(app.getHttpServer())
+      .post('/payroll/periods')
+      .set('Authorization', `Bearer ${ownerToken}`)
+      .send({
+        name: `Período mensual temporal E2E ${uniqueSuffix}`,
+        payrollType: 'MONTHLY',
+        year: 2099,
+        month: 8,
+        startDate: '2099-08-01',
+        endDate: '2099-08-31',
+        paymentDate: '2099-09-01',
+      })
+      .expect(201);
+
+    expect(response.body).toHaveProperty('id');
+    expect(response.body.payrollType).toBe('MONTHLY');
+    expect(response.body.year).toBe(2099);
+    expect(response.body.month).toBe(8);
+    expect(response.body.startDate).toBe('2099-08-01T00:00:00.000Z');
+    expect(response.body.endDate).toBe('2099-08-31T00:00:00.000Z');
+    expect(response.body.paymentDate).toBe('2099-09-01T00:00:00.000Z');
+
+    temporalPayrollPeriodId = response.body.id;
+  });
+
+  it('POST /payroll/periods debe permitir dos SEMIMONTHLY no solapadas en el mismo mes', async () => {
+    const firstHalfResponse = await request(app.getHttpServer())
+      .post('/payroll/periods')
+      .set('Authorization', `Bearer ${ownerToken}`)
+      .send({
+        name: `Primera quincena temporal E2E ${uniqueSuffix}`,
+        payrollType: 'SEMIMONTHLY',
+        year: 2099,
+        month: 7,
+        startDate: '2099-07-01',
+        endDate: '2099-07-15',
+        paymentDate: '2099-07-15',
+      })
+      .expect(201);
+
+    semimonthlyTemporalPeriodIds.push(firstHalfResponse.body.id as string);
+
+    const secondHalfResponse = await request(app.getHttpServer())
+      .post('/payroll/periods')
+      .set('Authorization', `Bearer ${ownerToken}`)
+      .send({
+        name: `Segunda quincena temporal E2E ${uniqueSuffix}`,
+        payrollType: 'SEMIMONTHLY',
+        year: 2099,
+        month: 7,
+        startDate: '2099-07-16',
+        endDate: '2099-07-31',
+        paymentDate: '2099-07-31',
+      })
+      .expect(201);
+
+    semimonthlyTemporalPeriodIds.push(secondHalfResponse.body.id as string);
+
+    expect(firstHalfResponse.body.id).not.toBe(secondHalfResponse.body.id);
+    expect(firstHalfResponse.body.startDate).toBe(
+      '2099-07-01T00:00:00.000Z',
+    );
+    expect(firstHalfResponse.body.endDate).toBe(
+      '2099-07-15T00:00:00.000Z',
+    );
+    expect(secondHalfResponse.body.startDate).toBe(
+      '2099-07-16T00:00:00.000Z',
+    );
+    expect(secondHalfResponse.body.endDate).toBe(
+      '2099-07-31T00:00:00.000Z',
+    );
+  });
+
+  it('POST /payroll/periods debe rechazar un SEMIMONTHLY que se solapa con otro', async () => {
+    await request(app.getHttpServer())
+      .post('/payroll/periods')
+      .set('Authorization', `Bearer ${ownerToken}`)
+      .send({
+        name: `Quincena solapada E2E ${uniqueSuffix}`,
+        payrollType: 'SEMIMONTHLY',
+        year: 2099,
+        month: 7,
+        startDate: '2099-07-10',
+        endDate: '2099-07-25',
+        paymentDate: '2099-07-25',
+      })
+      .expect(409);
+
+    const persistedOverlappingPeriodCount = await prisma.payrollPeriod.count({
+      where: {
+        name: `Quincena solapada E2E ${uniqueSuffix}`,
+        payrollType: 'SEMIMONTHLY',
+        year: 2099,
+        month: 7,
+        startDate: new Date('2099-07-10T00:00:00.000Z'),
+        endDate: new Date('2099-07-25T00:00:00.000Z'),
+      },
+    });
+
+    expect(persistedOverlappingPeriodCount).toBe(0);
+  });
+
+  it('POST /payroll/periods debe serializar creaciones SEMIMONTHLY concurrentes que se solapan', async () => {
+    const firstRequest = request(app.getHttpServer())
+      .post('/payroll/periods')
+      .set('Authorization', `Bearer ${ownerToken}`)
+      .send({
+        name: `Quincena concurrente A E2E ${uniqueSuffix}`,
+        payrollType: 'SEMIMONTHLY',
+        year: 2099,
+        month: 6,
+        startDate: '2099-06-01',
+        endDate: '2099-06-15',
+        paymentDate: '2099-06-15',
+      });
+
+    const secondRequest = request(app.getHttpServer())
+      .post('/payroll/periods')
+      .set('Authorization', `Bearer ${ownerToken}`)
+      .send({
+        name: `Quincena concurrente B E2E ${uniqueSuffix}`,
+        payrollType: 'SEMIMONTHLY',
+        year: 2099,
+        month: 6,
+        startDate: '2099-06-10',
+        endDate: '2099-06-25',
+        paymentDate: '2099-06-25',
+      });
+
+    const responses = await Promise.all([firstRequest, secondRequest]);
+
+    const statusCodes = responses
+      .map((response) => response.status)
+      .sort((left, right) => left - right);
+
+    expect(statusCodes).toEqual([201, 409]);
+
+    const successfulResponse = responses.find(
+      (response) => response.status === 201,
+    );
+
+    expect(successfulResponse).toBeDefined();
+
+    if (successfulResponse) {
+      concurrentTemporalPeriodIds.push(
+        successfulResponse.body.id as string,
+      );
+    }
+
+    const persistedPeriods = await prisma.payrollPeriod.findMany({
+      where: {
+        name: {
+          in: [
+            `Quincena concurrente A E2E ${uniqueSuffix}`,
+            `Quincena concurrente B E2E ${uniqueSuffix}`,
+          ],
+        },
+        payrollType: 'SEMIMONTHLY',
+        year: 2099,
+        month: 6,
+      },
+      select: {
+        id: true,
+      },
+    });
+
+    expect(persistedPeriods).toHaveLength(1);
+    expect(persistedPeriods[0].id).toBe(successfulResponse?.body.id);
+  });
+
   it('POST /payroll-novelties debe crear una novedad', async () => {
     const response = await request(app.getHttpServer())
       .post('/payroll-novelties')
@@ -600,7 +815,7 @@ if (rollbackPeriodIds.length > 0) {
     expect(auditRecord.action).toBe('CREATE_PAYROLL_NOVELTY');
   });
 
-  it('POST /payroll/calculate debe persistir aritmética Decimal exacta sin ruido IEEE-754', async () => {
+  it('POST /payroll/calculate legacy debe persistir aritmética Decimal exacta sin ruido IEEE-754', async () => {
   let precisionPeriodId: string | undefined;
   let precisionNoveltyId: string | undefined;
 
@@ -766,15 +981,19 @@ if (rollbackPeriodIds.length > 0) {
   }
 });
 
-  it('POST /payroll/calculate debe hacer rollback real si falla el audit en un primer cálculo', async () => {
-  const employee = await prisma.employee.findUniqueOrThrow({
-    where: {
-      id: createdEmployeeId,
-    },
-    select: {
-      companyId: true,
-    },
-  });
+  it('POST /payroll/periods/:id/calculate debe hacer rollback real si falla el audit en un primer cálculo', async () => {
+  const periodResponse = await request(app.getHttpServer())
+    .post('/payroll/periods')
+    .set('Authorization', `Bearer ${ownerToken}`)
+    .send({
+      name: `Rollback first calculation ${uniqueSuffix}`,
+      year: rollbackPayrollYear,
+      month: rollbackFirstMonth,
+      payrollType: rollbackPayrollType,
+    })
+    .expect(201);
+
+  rollbackFirstPeriodId = periodResponse.body.id as string;
 
   const auditSpy = jest
     .spyOn(auditService, 'log')
@@ -782,28 +1001,18 @@ if (rollbackPeriodIds.length > 0) {
 
   try {
     await request(app.getHttpServer())
-      .post('/payroll/calculate')
+      .post(`/payroll/periods/${rollbackFirstPeriodId}/calculate`)
       .set('Authorization', `Bearer ${ownerToken}`)
-      .send({
-        year: rollbackPayrollYear,
-        month: rollbackFirstMonth,
-        payrollType: rollbackPayrollType,
-      })
       .expect(500);
   } finally {
     auditSpy.mockRestore();
   }
 
-  const period = await prisma.payrollPeriod.findFirstOrThrow({
+  const period = await prisma.payrollPeriod.findUniqueOrThrow({
     where: {
-      companyId: employee.companyId,
-      year: rollbackPayrollYear,
-      month: rollbackFirstMonth,
-      payrollType: rollbackPayrollType,
+      id: rollbackFirstPeriodId,
     },
   });
-
-  rollbackFirstPeriodId = period.id;
 
   expect(period.status).toBe('DRAFT');
 
@@ -839,36 +1048,30 @@ if (rollbackPeriodIds.length > 0) {
   expect(auditCount).toBe(0);
 });
 
-it('POST /payroll/calculate debe restaurar la liquidación anterior si falla una recalculación', async () => {
-  const employee = await prisma.employee.findUniqueOrThrow({
-    where: {
-      id: createdEmployeeId,
-    },
-    select: {
-      companyId: true,
-    },
-  });
-
-  await request(app.getHttpServer())
-    .post('/payroll/calculate')
+it('POST /payroll/periods/:id/calculate debe restaurar la liquidación anterior si falla una recalculación', async () => {
+  const periodResponse = await request(app.getHttpServer())
+    .post('/payroll/periods')
     .set('Authorization', `Bearer ${ownerToken}`)
     .send({
+      name: `Rollback recalculation ${uniqueSuffix}`,
       year: rollbackPayrollYear,
       month: rollbackRecalculationMonth,
       payrollType: rollbackPayrollType,
     })
     .expect(201);
 
-  const period = await prisma.payrollPeriod.findFirstOrThrow({
+  rollbackRecalculationPeriodId = periodResponse.body.id as string;
+
+  await request(app.getHttpServer())
+    .post(`/payroll/periods/${rollbackRecalculationPeriodId}/calculate`)
+    .set('Authorization', `Bearer ${ownerToken}`)
+    .expect(201);
+
+  const period = await prisma.payrollPeriod.findUniqueOrThrow({
     where: {
-      companyId: employee.companyId,
-      year: rollbackPayrollYear,
-      month: rollbackRecalculationMonth,
-      payrollType: rollbackPayrollType,
+      id: rollbackRecalculationPeriodId,
     },
   });
-
-  rollbackRecalculationPeriodId = period.id;
 
   const before = await getPayrollSnapshot(period.id);
 
@@ -891,13 +1094,8 @@ it('POST /payroll/calculate debe restaurar la liquidación anterior si falla una
 
   try {
     await request(app.getHttpServer())
-      .post('/payroll/calculate')
+      .post(`/payroll/periods/${rollbackRecalculationPeriodId}/calculate`)
       .set('Authorization', `Bearer ${ownerToken}`)
-      .send({
-        year: rollbackPayrollYear,
-        month: rollbackRecalculationMonth,
-        payrollType: rollbackPayrollType,
-      })
       .expect(500);
   } finally {
     auditSpy.mockRestore();
@@ -942,13 +1140,8 @@ it('POST /payroll/calculate debe restaurar la liquidación anterior si falla una
     expect(draftPeriod.version).toBe(0);
 
     await request(app.getHttpServer())
-      .post('/payroll/calculate')
+      .post(`/payroll/periods/${lifecyclePayrollPeriodId}/calculate`)
       .set('Authorization', `Bearer ${ownerToken}`)
-      .send({
-        year: lifecyclePayrollYear,
-        month: lifecyclePayrollMonth,
-        payrollType: lifecyclePayrollType,
-      })
       .expect(201);
 
     const calculatedPeriod = await prisma.payrollPeriod.findUniqueOrThrow({
