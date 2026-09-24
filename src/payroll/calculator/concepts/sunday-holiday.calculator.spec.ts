@@ -2,6 +2,11 @@ import { ConceptType, PayrollNovelty, Prisma } from '@prisma/client';
 import Decimal from 'decimal.js';
 import { SundayHolidayCalculator } from './sunday-holiday.calculator';
 
+const defaultRules = {
+  standardMonthlyHours: new Decimal('210'),
+  sundayHolidayRate: new Decimal('0.9'),
+};
+
 describe('SundayHolidayCalculator', () => {
   let calculator: SundayHolidayCalculator;
 
@@ -22,9 +27,11 @@ describe('SundayHolidayCalculator', () => {
     }) as unknown as PayrollNovelty;
 
   it('should calculate sunday surcharge using the configured rate', () => {
-    const result = calculator.calculate(new Decimal('2100000'), [
-      createSurcharge('SUNDAY_SURCHARGE', '2', '2 horas dominicales'),
-    ]);
+    const result = calculator.calculate(
+      new Decimal('2100000'),
+      [createSurcharge('SUNDAY_SURCHARGE', '2', '2 horas dominicales')],
+      defaultRules,
+    );
 
     expect(Decimal.isDecimal(result.earned)).toBe(true);
     expect(result.earned.toString()).toBe('18000');
@@ -40,23 +47,42 @@ describe('SundayHolidayCalculator', () => {
   });
 
   it('should calculate holiday surcharge using the configured rate', () => {
-    const result = calculator.calculate(new Decimal('2100000'), [
-      createSurcharge('HOLIDAY_SURCHARGE', '2', '2 horas festivas'),
-    ]);
+    const result = calculator.calculate(
+      new Decimal('2100000'),
+      [createSurcharge('HOLIDAY_SURCHARGE', '2', '2 horas festivas')],
+      defaultRules,
+    );
 
     expect(result.earned.toString()).toBe('18000');
   });
 
   it('should preserve fractional sunday hours exactly', () => {
-    const result = calculator.calculate(new Decimal('2100000'), [
-      createSurcharge(
-        'SUNDAY_SURCHARGE',
-        '1.5',
-        'Horas dominicales fraccionarias',
-      ),
-    ]);
+    const result = calculator.calculate(
+      new Decimal('2100000'),
+      [
+        createSurcharge(
+          'SUNDAY_SURCHARGE',
+          '1.5',
+          'Horas dominicales fraccionarias',
+        ),
+      ],
+      defaultRules,
+    );
 
     expect(result.earned.toString()).toBe('13500');
     expect(Decimal.isDecimal(result.concepts[0].amount)).toBe(true);
+  });
+
+  it('should use the supplied sunday and holiday surcharge rate', () => {
+    const result = calculator.calculate(
+      new Decimal('2100000'),
+      [createSurcharge('SUNDAY_SURCHARGE', '2', 'Horas dominicales')],
+      {
+        ...defaultRules,
+        sundayHolidayRate: new Decimal('1'),
+      },
+    );
+
+    expect(result.earned.toString()).toBe('20000');
   });
 });

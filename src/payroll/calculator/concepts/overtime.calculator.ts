@@ -3,12 +3,22 @@ import { ConceptType, PayrollNovelty } from '@prisma/client';
 import Decimal from 'decimal.js';
 import { toDecimal } from '../../money/decimal';
 import { PayrollConceptAmount } from '../../money/payroll-money.types';
-import { PAYROLL_RATES } from '../config/payroll-rates.config';
+
+interface OvertimeCalculationRules {
+  standardMonthlyHours: Decimal;
+  daytimeMultiplier: Decimal;
+  nighttimeMultiplier: Decimal;
+  sundayHolidayRate: Decimal;
+}
 
 @Injectable()
 export class OvertimeCalculator {
-  calculate(baseSalary: Decimal, novelties: PayrollNovelty[]) {
-    const hourlyRate = baseSalary.dividedBy(PAYROLL_RATES.standardMonthlyHours);
+  calculate(
+    baseSalary: Decimal,
+    novelties: PayrollNovelty[],
+    rules: OvertimeCalculationRules,
+  ) {
+    const hourlyRate = baseSalary.dividedBy(rules.standardMonthlyHours);
 
     let earned = new Decimal(0);
 
@@ -21,15 +31,14 @@ export class OvertimeCalculator {
 
       const hours = toDecimal(novelty.quantity ?? '0');
 
-      const overtimeMultiplier = toDecimal(
+      const overtimeMultiplier =
         novelty.type === 'OVERTIME_NIGHT'
-          ? PAYROLL_RATES.overtime.nighttimeMultiplier
-          : PAYROLL_RATES.overtime.daytimeMultiplier,
-      );
+          ? rules.nighttimeMultiplier
+          : rules.daytimeMultiplier;
 
       const daySurchargeRate =
         novelty.dayType === 'SUNDAY' || novelty.dayType === 'HOLIDAY'
-          ? toDecimal(PAYROLL_RATES.surcharges.sundayHolidayRate)
+          ? rules.sundayHolidayRate
           : new Decimal(0);
 
       const multiplier = overtimeMultiplier.plus(daySurchargeRate);

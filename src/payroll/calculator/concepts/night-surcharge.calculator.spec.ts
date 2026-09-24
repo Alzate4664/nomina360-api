@@ -2,6 +2,11 @@ import { ConceptType, PayrollNovelty, Prisma } from '@prisma/client';
 import Decimal from 'decimal.js';
 import { NightSurchargeCalculator } from './night-surcharge.calculator';
 
+const defaultRules = {
+  standardMonthlyHours: new Decimal('210'),
+  nighttimeRate: new Decimal('0.35'),
+};
+
 describe('NightSurchargeCalculator', () => {
   let calculator: NightSurchargeCalculator;
 
@@ -21,9 +26,11 @@ describe('NightSurchargeCalculator', () => {
     }) as unknown as PayrollNovelty;
 
   it('should calculate nighttime surcharge using the configured rate', () => {
-    const result = calculator.calculate(new Decimal('2100000'), [
-      createNightSurcharge('2', '2 horas recargo nocturno'),
-    ]);
+    const result = calculator.calculate(
+      new Decimal('2100000'),
+      [createNightSurcharge('2', '2 horas recargo nocturno')],
+      defaultRules,
+    );
 
     expect(Decimal.isDecimal(result.earned)).toBe(true);
     expect(result.earned.toString()).toBe('7000');
@@ -39,11 +46,39 @@ describe('NightSurchargeCalculator', () => {
   });
 
   it('should preserve fractional nighttime hours exactly', () => {
-    const result = calculator.calculate(new Decimal('2100000'), [
-      createNightSurcharge('1.5'),
-    ]);
+    const result = calculator.calculate(
+      new Decimal('2100000'),
+      [createNightSurcharge('1.5')],
+      defaultRules,
+    );
 
     expect(result.earned.toString()).toBe('5250');
     expect(Decimal.isDecimal(result.concepts[0].amount)).toBe(true);
+  });
+
+  it('should use the supplied nighttime surcharge rate', () => {
+    const result = calculator.calculate(
+      new Decimal('2100000'),
+      [createNightSurcharge('2')],
+      {
+        ...defaultRules,
+        nighttimeRate: new Decimal('0.5'),
+      },
+    );
+
+    expect(result.earned.toString()).toBe('10000');
+  });
+
+  it('should use the supplied standard monthly hours', () => {
+    const result = calculator.calculate(
+      new Decimal('2100000'),
+      [createNightSurcharge('2')],
+      {
+        ...defaultRules,
+        standardMonthlyHours: new Decimal('200'),
+      },
+    );
+
+    expect(result.earned.toString()).toBe('7350');
   });
 });

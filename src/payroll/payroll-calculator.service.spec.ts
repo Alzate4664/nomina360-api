@@ -350,4 +350,32 @@ describe('PayrollCalculatorService', () => {
 
     expect(pensionConcept?.amount.toString()).toBe('150000');
   });
+
+  it('should propagate the supplied standard monthly hours to hourly calculations', () => {
+    const overtime = {
+      type: 'OVERTIME',
+      dayType: PayrollDayType.REGULAR,
+      quantity: new Prisma.Decimal('2'),
+      amount: null,
+      description: 'Horas extra',
+    } as unknown as PayrollNovelty;
+
+    const rules = {
+      ...DEFAULT_PAYROLL_RULES,
+      standardMonthlyHours: new Decimal('200'),
+    };
+
+    const result = calculator.calculate({
+      baseSalary: new Decimal('2000000'),
+      workedDays: 30,
+      novelties: [overtime],
+      rules,
+    });
+
+    const overtimeConcept = result.concepts.find(
+      (concept) => concept.code === 'OVERTIME',
+    );
+
+    expect(overtimeConcept?.amount.toString()).toBe('25000');
+  });
 });

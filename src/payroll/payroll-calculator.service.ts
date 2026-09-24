@@ -78,16 +78,30 @@ export class PayrollCalculatorService {
     const overtimeResult = this.overtimeCalculator.calculate(
       input.baseSalary,
       input.novelties,
+      {
+        standardMonthlyHours: input.rules.standardMonthlyHours,
+        daytimeMultiplier: input.rules.overtime.daytimeMultiplier,
+        nighttimeMultiplier: input.rules.overtime.nighttimeMultiplier,
+        sundayHolidayRate: input.rules.surcharges.sundayHolidayRate,
+      },
     );
 
     const nightSurchargeResult = this.nightSurchargeCalculator.calculate(
       input.baseSalary,
       input.novelties,
+      {
+        standardMonthlyHours: input.rules.standardMonthlyHours,
+        nighttimeRate: input.rules.surcharges.nighttimeRate,
+      },
     );
 
     const sundayHolidayResult = this.sundayHolidayCalculator.calculate(
       input.baseSalary,
       input.novelties,
+      {
+        standardMonthlyHours: input.rules.standardMonthlyHours,
+        sundayHolidayRate: input.rules.surcharges.sundayHolidayRate,
+      },
     );
 
     const transportAllowanceResult =
