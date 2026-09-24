@@ -16,6 +16,7 @@ describe('CalculatePayrollUseCase', () => {
   const prismaMock = {
     payrollPeriod: {
       findFirst: jest.fn(),
+      findMany: jest.fn(),
       create: jest.fn(),
       update: jest.fn(),
     },
@@ -139,6 +140,14 @@ describe('CalculatePayrollUseCase', () => {
       version: 0,
     });
 
+    prismaMock.payrollPeriod.findMany.mockImplementation(
+      async (args: unknown): Promise<unknown[]> => {
+        const period: unknown = await prismaMock.payrollPeriod.findFirst(args);
+
+        return period === null || period === undefined ? [] : [period];
+      },
+    );
+
     prismaMock.payrollPeriod.update.mockResolvedValue({
       id: 'period-1',
       companyId: 'company-1',
@@ -189,6 +198,57 @@ describe('CalculatePayrollUseCase', () => {
     });
 
     expect(prismaMock.payrollPeriod.create).not.toHaveBeenCalled();
+    expect(prismaMock.employee.findMany).not.toHaveBeenCalled();
+    expect(prismaMock.$transaction).not.toHaveBeenCalled();
+  });
+
+  it('should reject legacy calculation when payroll period does not exist', async () => {
+    prismaMock.payrollPeriod.findMany.mockResolvedValueOnce([]);
+
+    await expect(
+      useCase.executeLegacy(
+        'company-1',
+        'user-1',
+        2026,
+        12,
+        PayrollType.MONTHLY,
+      ),
+    ).rejects.toBeInstanceOf(NotFoundException);
+
+    expect(prismaMock.employee.findMany).not.toHaveBeenCalled();
+    expect(prismaMock.$transaction).not.toHaveBeenCalled();
+  });
+
+  it('should reject legacy calculation when period lookup is ambiguous', async () => {
+    prismaMock.payrollPeriod.findMany.mockResolvedValueOnce([
+      {
+        id: 'period-first-half',
+      },
+      {
+        id: 'period-second-half',
+      },
+    ]);
+
+    await expect(
+      useCase.executeLegacy(
+        'company-1',
+        'user-1',
+        2026,
+        8,
+        PayrollType.SEMIMONTHLY,
+      ),
+    ).rejects.toBeInstanceOf(BadRequestException);
+
+    expect(prismaMock.payrollPeriod.findMany).toHaveBeenCalledWith({
+      where: {
+        companyId: 'company-1',
+        year: 2026,
+        month: 8,
+        payrollType: PayrollType.SEMIMONTHLY,
+      },
+      take: 2,
+    });
+
     expect(prismaMock.employee.findMany).not.toHaveBeenCalled();
     expect(prismaMock.$transaction).not.toHaveBeenCalled();
   });

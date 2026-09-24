@@ -68,22 +68,29 @@ export class CalculatePayrollUseCase {
     month: number,
     payrollType: PayrollType,
   ) {
-    const period = await this.prisma.payrollPeriod.findFirst({
+    const periods = await this.prisma.payrollPeriod.findMany({
       where: {
         companyId,
         year,
         month,
         payrollType,
       },
+      take: 2,
     });
 
-    if (!period) {
+    if (periods.length === 0) {
       throw new NotFoundException(
         'Periodo de nómina no encontrado. Debe crearse antes de calcularlo.',
       );
     }
 
-    return this.calculatePeriod(companyId, currentUserId, period);
+    if (periods.length > 1) {
+      throw new BadRequestException(
+        'Existen múltiples períodos de nómina para los datos enviados. Use el identificador del período para calcularlo.',
+      );
+    }
+
+    return this.calculatePeriod(companyId, currentUserId, periods[0]);
   }
 
   private async calculatePeriod(
