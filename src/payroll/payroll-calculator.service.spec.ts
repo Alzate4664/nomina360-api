@@ -21,6 +21,7 @@ import { SundayHolidayCalculator } from './calculator/concepts/sunday-holiday.ca
 import { TransportAllowanceCalculator } from './calculator/concepts/transport-allowance.calculator';
 import { VacationCalculator } from './calculator/concepts/vacation.calculator';
 import { PayrollCalculatorService } from './payroll-calculator.service';
+import { DEFAULT_PAYROLL_RULES } from './rules/default-payroll-rules';
 
 describe('PayrollCalculatorService', () => {
   let calculator: PayrollCalculatorService;
@@ -50,6 +51,7 @@ describe('PayrollCalculatorService', () => {
       baseSalary,
       workedDays: 30,
       novelties: [],
+      rules: DEFAULT_PAYROLL_RULES,
     });
 
     const expectedTransportAllowance = new Decimal(
@@ -90,6 +92,7 @@ describe('PayrollCalculatorService', () => {
       baseSalary,
       workedDays: 30,
       novelties: [sickLeave],
+      rules: DEFAULT_PAYROLL_RULES,
     });
 
     const expectedOrdinarySalary = new Decimal('2700000');
@@ -155,6 +158,7 @@ describe('PayrollCalculatorService', () => {
       baseSalary,
       workedDays: 30,
       novelties: [vacationNovelty],
+      rules: DEFAULT_PAYROLL_RULES,
     });
 
     const dailySalary = baseSalary.dividedBy(30);
@@ -207,6 +211,7 @@ describe('PayrollCalculatorService', () => {
       baseSalary: new Decimal('3000000'),
       workedDays: 30,
       novelties: [paidLeave],
+      rules: DEFAULT_PAYROLL_RULES,
     });
 
     const baseSalaryConcept = result.concepts.find(
@@ -239,6 +244,7 @@ describe('PayrollCalculatorService', () => {
       baseSalary: new Decimal('3000000'),
       workedDays: 30,
       novelties: [unpaidLeave],
+      rules: DEFAULT_PAYROLL_RULES,
     });
 
     const baseSalaryConcept = result.concepts.find(
@@ -284,6 +290,7 @@ describe('PayrollCalculatorService', () => {
       baseSalary: new Decimal('3000000'),
       workedDays: 30,
       novelties: [vacation],
+      rules: DEFAULT_PAYROLL_RULES,
     });
 
     const baseSalaryConcept = result.concepts.find(
@@ -296,5 +303,51 @@ describe('PayrollCalculatorService', () => {
 
     expect(baseSalaryConcept?.amount.toString()).toBe('2850000');
     expect(vacationConcept?.amount.toString()).toBe('150000');
+  });
+
+  it('should propagate the supplied employee health rate to health calculation', () => {
+    const rules = {
+      ...DEFAULT_PAYROLL_RULES,
+      contributions: {
+        ...DEFAULT_PAYROLL_RULES.contributions,
+        employeeHealthRate: new Decimal('0.05'),
+      },
+    };
+
+    const result = calculator.calculate({
+      baseSalary: new Decimal('3000000'),
+      workedDays: 30,
+      novelties: [],
+      rules,
+    });
+
+    const healthConcept = result.concepts.find(
+      (concept) => concept.code === 'HEALTH',
+    );
+
+    expect(healthConcept?.amount.toString()).toBe('150000');
+  });
+
+  it('should propagate the supplied employee pension rate to pension calculation', () => {
+    const rules = {
+      ...DEFAULT_PAYROLL_RULES,
+      contributions: {
+        ...DEFAULT_PAYROLL_RULES.contributions,
+        employeePensionRate: new Decimal('0.05'),
+      },
+    };
+
+    const result = calculator.calculate({
+      baseSalary: new Decimal('3000000'),
+      workedDays: 30,
+      novelties: [],
+      rules,
+    });
+
+    const pensionConcept = result.concepts.find(
+      (concept) => concept.code === 'PENSION',
+    );
+
+    expect(pensionConcept?.amount.toString()).toBe('150000');
   });
 });

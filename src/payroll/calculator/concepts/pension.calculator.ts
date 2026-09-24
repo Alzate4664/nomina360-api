@@ -5,8 +5,8 @@ import { PayrollConceptAmount } from '../../money/payroll-money.types';
 
 @Injectable()
 export class PensionCalculator {
-  calculate(earnedTotal: Decimal) {
-    const amount = earnedTotal.times('0.04');
+  calculate(earnedTotal: Decimal, employeePensionRate: Decimal) {
+    const amount = earnedTotal.times(employeePensionRate);
 
     const concepts: PayrollConceptAmount[] = [
       {

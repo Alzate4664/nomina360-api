@@ -21,6 +21,7 @@ import {
   PayrollCalculationResult,
   PayrollConceptAmount,
 } from '../money/payroll-money.types';
+import { DEFAULT_PAYROLL_RULES } from '../rules/default-payroll-rules';
 
 // In-memory result collected per eligible employee before the transaction opens.
 // Concept fields use the calculator output shape { code, name, type, amount }.
@@ -222,6 +223,7 @@ export class CalculatePayrollUseCase {
           baseSalary,
           workedDays: 30,
           novelties: employeeNovelties,
+          rules: DEFAULT_PAYROLL_RULES,
         });
       }
 

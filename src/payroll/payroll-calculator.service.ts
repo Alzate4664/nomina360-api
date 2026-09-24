@@ -18,11 +18,13 @@ import {
   PayrollCalculationResult,
   PayrollConceptAmount,
 } from './money/payroll-money.types';
+import { PayrollRules } from './rules/payroll-rules';
 
 interface PayrollCalculatorInput {
   baseSalary: Decimal;
   workedDays: number;
   novelties: PayrollNovelty[];
+  rules: PayrollRules;
 }
 
 @Injectable()
@@ -110,9 +112,15 @@ export class PayrollCalculatorService {
       .plus(nightSurchargeResult.earned)
       .plus(sundayHolidayResult.earned);
 
-    const healthResult = this.healthCalculator.calculate(contributionBase);
+    const healthResult = this.healthCalculator.calculate(
+      contributionBase,
+      input.rules.contributions.employeeHealthRate,
+    );
 
-    const pensionResult = this.pensionCalculator.calculate(contributionBase);
+    const pensionResult = this.pensionCalculator.calculate(
+      contributionBase,
+      input.rules.contributions.employeePensionRate,
+    );
 
     const earnedTotal = contributionBase.plus(transportAllowanceResult.earned);
 
