@@ -3,7 +3,7 @@ import { DEFAULT_PAYROLL_RULES } from './default-payroll-rules';
 describe('DEFAULT_PAYROLL_RULES', () => {
   it('should preserve the current payroll rule values', () => {
     expect(DEFAULT_PAYROLL_RULES.minimumWage.toString()).toBe('1750905');
-    expect(DEFAULT_PAYROLL_RULES.salary.daysPerMonth).toBe(30);
+    expect(DEFAULT_PAYROLL_RULES.salary.monthlyDayBasis).toBe(30);
     expect(DEFAULT_PAYROLL_RULES.standardMonthlyHours.toString()).toBe('210');
 
     expect(DEFAULT_PAYROLL_RULES.overtime.daytimeMultiplier.toString()).toBe(
@@ -57,5 +57,11 @@ describe('DEFAULT_PAYROLL_RULES', () => {
       DEFAULT_PAYROLL_RULES.sickLeave.commonDiseaseSecondRate.toString(),
     ).toBe('0.5');
     expect(DEFAULT_PAYROLL_RULES.sickLeave.workRiskRate.toString()).toBe('1');
+
+    expect(
+      DEFAULT_PAYROLL_RULES.transportAllowance.monthlyProrationDayBasis,
+    ).toBe(30);
+
+    expect(DEFAULT_PAYROLL_RULES.sickLeave.monthlyIbcDayBasis).toBe(30);
   });
 });

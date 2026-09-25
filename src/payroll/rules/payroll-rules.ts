@@ -4,7 +4,7 @@ export interface PayrollRules {
   readonly minimumWage: Decimal;
 
   readonly salary: {
-    readonly daysPerMonth: number;
+    readonly monthlyDayBasis: number;
   };
 
   readonly standardMonthlyHours: Decimal;
@@ -27,6 +27,7 @@ export interface PayrollRules {
   readonly transportAllowance: {
     readonly monthlyAmount: Decimal;
     readonly salaryLimitInMinimumWages: Decimal;
+    readonly monthlyProrationDayBasis: number;
   };
 
   readonly severance: {
@@ -39,6 +40,7 @@ export interface PayrollRules {
   };
 
   readonly sickLeave: {
+    readonly monthlyIbcDayBasis: number;
     readonly commonDiseaseFirstRangeEndDay: number;
     readonly commonDiseaseFirstRate: Decimal;
     readonly commonDiseaseSecondRangeEndDay: number;

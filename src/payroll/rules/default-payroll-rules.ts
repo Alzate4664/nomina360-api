@@ -5,7 +5,7 @@ export const DEFAULT_PAYROLL_RULES: PayrollRules = {
   minimumWage: new Decimal('1750905'),
 
   salary: {
-    daysPerMonth: 30,
+    monthlyDayBasis: 30,
   },
 
   standardMonthlyHours: new Decimal('210'),
@@ -28,6 +28,7 @@ export const DEFAULT_PAYROLL_RULES: PayrollRules = {
   transportAllowance: {
     monthlyAmount: new Decimal('249095'),
     salaryLimitInMinimumWages: new Decimal('2'),
+    monthlyProrationDayBasis: 30,
   },
 
   severance: {
@@ -45,5 +46,6 @@ export const DEFAULT_PAYROLL_RULES: PayrollRules = {
     commonDiseaseSecondRangeEndDay: 180,
     commonDiseaseSecondRate: new Decimal('0.5'),
     workRiskRate: new Decimal('1'),
+    monthlyIbcDayBasis: 30,
   },
 };
