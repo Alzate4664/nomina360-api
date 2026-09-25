@@ -11,6 +11,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { EmploymentTerminationsService } from './employment-terminations.service';
 import { TerminationPayrollCalculator } from '../payroll/calculator/termination-payroll.calculator';
 import Decimal from 'decimal.js';
+import { DEFAULT_PAYROLL_RULES } from '../payroll/rules/default-payroll-rules';
 
 type TerminationCalculation = ReturnType<
   TerminationPayrollCalculator['calculate']
@@ -424,10 +425,13 @@ describe('EmploymentTerminationsService', () => {
       terminationDate: termination.terminationDate,
       unpaidSalaryStartDate: new Date('2026-09-01T00:00:00.000Z'),
       pendingVacationDays: decimalMatcher(),
+      rules: DEFAULT_PAYROLL_RULES,
     });
 
     const terminationInput =
       terminationPayrollCalculator.calculate.mock.calls[0][0];
+
+    expect(terminationInput.rules).toBe(DEFAULT_PAYROLL_RULES);
 
     expect(Decimal.isDecimal(terminationInput.baseSalary)).toBe(true);
     expect(terminationInput.baseSalary.toString()).toBe('3000000');

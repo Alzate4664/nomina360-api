@@ -10,6 +10,7 @@ import { EmployeeStatus, TerminationStatus } from '@prisma/client';
 import { TerminationPayrollCalculator } from '../payroll/calculator/termination-payroll.calculator';
 import { CalculateEmploymentTerminationDto } from './dto/calculate-employment-termination.dto';
 import { toDecimal } from '../payroll/money/decimal';
+import { DEFAULT_PAYROLL_RULES } from '../payroll/rules/default-payroll-rules';
 
 @Injectable()
 export class EmploymentTerminationsService {
@@ -147,6 +148,7 @@ export class EmploymentTerminationsService {
       terminationDate: termination.terminationDate,
       unpaidSalaryStartDate,
       pendingVacationDays,
+      rules: DEFAULT_PAYROLL_RULES,
     });
 
     const calculatedAt = new Date();

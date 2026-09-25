@@ -378,4 +378,57 @@ describe('PayrollCalculatorService', () => {
 
     expect(overtimeConcept?.amount.toString()).toBe('25000');
   });
+
+  it('should propagate the supplied monthly salary day basis', () => {
+    const rules = {
+      ...DEFAULT_PAYROLL_RULES,
+      salary: {
+        ...DEFAULT_PAYROLL_RULES.salary,
+        monthlyDayBasis: 20,
+      },
+    };
+
+    const result = calculator.calculate({
+      baseSalary: new Decimal('3000000'),
+      workedDays: 10,
+      novelties: [],
+      rules,
+    });
+
+    const baseSalaryConcept = result.concepts.find(
+      (concept) => concept.code === 'BASE_SALARY',
+    );
+
+    expect(baseSalaryConcept?.amount.toString()).toBe('1500000');
+  });
+
+  it('should use the supplied monthly salary day basis for absence deductions', () => {
+    const absence = {
+      type: 'ABSENCE',
+      quantity: new Prisma.Decimal('2'),
+      amount: null,
+      description: 'Ausencia',
+    } as unknown as PayrollNovelty;
+
+    const rules = {
+      ...DEFAULT_PAYROLL_RULES,
+      salary: {
+        ...DEFAULT_PAYROLL_RULES.salary,
+        monthlyDayBasis: 20,
+      },
+    };
+
+    const result = calculator.calculate({
+      baseSalary: new Decimal('3000000'),
+      workedDays: 30,
+      novelties: [absence],
+      rules,
+    });
+
+    const absenceConcept = result.concepts.find(
+      (concept) => concept.code === 'ABSENCE',
+    );
+
+    expect(absenceConcept?.amount.toString()).toBe('300000');
+  });
 });

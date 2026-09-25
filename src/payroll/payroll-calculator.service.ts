@@ -46,18 +46,22 @@ export class PayrollCalculatorService {
   ) {}
 
   calculate(input: PayrollCalculatorInput): PayrollCalculationResult {
-    const dailySalary = input.baseSalary.dividedBy(30);
+    const dailySalary = input.baseSalary.dividedBy(
+      input.rules.salary.monthlyDayBasis,
+    );
 
     const sickLeaveResult = this.sickLeaveCalculator.calculate(input.novelties);
 
     const vacationResult = this.vacationCalculator.calculate(
       input.baseSalary,
       input.novelties,
+      input.rules.salary.monthlyDayBasis,
     );
 
     const leaveResult = this.leaveCalculator.calculate(
       input.baseSalary,
       input.novelties,
+      input.rules.salary.monthlyDayBasis,
     );
 
     const ordinaryWorkedDays = Decimal.max(
@@ -71,6 +75,7 @@ export class PayrollCalculatorService {
     const baseSalaryResult = this.baseSalaryCalculator.calculate(
       input.baseSalary,
       ordinaryWorkedDays,
+      input.rules.salary.monthlyDayBasis,
     );
 
     const bonusResult = this.bonusCalculator.calculate(input.novelties);

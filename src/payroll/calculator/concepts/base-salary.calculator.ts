@@ -5,8 +5,8 @@ import { PayrollConceptAmount } from '../../money/payroll-money.types';
 
 @Injectable()
 export class BaseSalaryCalculator {
-  calculate(baseSalary: Decimal, workedDays: Decimal) {
-    const amount = baseSalary.dividedBy(30).times(workedDays);
+  calculate(baseSalary: Decimal, workedDays: Decimal, monthlyDayBasis: number) {
+    const amount = baseSalary.dividedBy(monthlyDayBasis).times(workedDays);
 
     const concepts: PayrollConceptAmount[] = [
       {

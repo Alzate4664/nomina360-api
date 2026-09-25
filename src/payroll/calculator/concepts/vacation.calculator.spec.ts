@@ -20,9 +20,11 @@ describe('VacationCalculator', () => {
     }) as unknown as PayrollNovelty;
 
   it('should calculate 5 vacation days', () => {
-    const result = calculator.calculate(new Decimal('3000000'), [
-      createVacation('5'),
-    ]);
+    const result = calculator.calculate(
+      new Decimal('3000000'),
+      [createVacation('5')],
+      30,
+    );
 
     expect(Decimal.isDecimal(result.earned)).toBe(true);
     expect(Decimal.isDecimal(result.days)).toBe(true);
@@ -35,27 +37,33 @@ describe('VacationCalculator', () => {
   });
 
   it('should calculate 15 vacation days', () => {
-    const result = calculator.calculate(new Decimal('3000000'), [
-      createVacation('15'),
-    ]);
+    const result = calculator.calculate(
+      new Decimal('3000000'),
+      [createVacation('15')],
+      30,
+    );
 
     expect(result.earned.toString()).toBe('1500000');
     expect(result.days.toString()).toBe('15');
   });
 
   it('should calculate fractional vacation days exactly', () => {
-    const result = calculator.calculate(new Decimal('3000000'), [
-      createVacation('7.5'),
-    ]);
+    const result = calculator.calculate(
+      new Decimal('3000000'),
+      [createVacation('7.5')],
+      30,
+    );
 
     expect(result.earned.toString()).toBe('750000');
     expect(result.days.toString()).toBe('7.5');
   });
 
   it('should ignore vacation with zero days', () => {
-    const result = calculator.calculate(new Decimal('3000000'), [
-      createVacation('0'),
-    ]);
+    const result = calculator.calculate(
+      new Decimal('3000000'),
+      [createVacation('0')],
+      30,
+    );
 
     expect(result.earned.toString()).toBe('0');
     expect(result.days.toString()).toBe('0');
@@ -63,9 +71,11 @@ describe('VacationCalculator', () => {
   });
 
   it('should ignore vacation with negative days', () => {
-    const result = calculator.calculate(new Decimal('3000000'), [
-      createVacation('-5'),
-    ]);
+    const result = calculator.calculate(
+      new Decimal('3000000'),
+      [createVacation('-5')],
+      30,
+    );
 
     expect(result.earned.toString()).toBe('0');
     expect(result.days.toString()).toBe('0');
@@ -73,10 +83,14 @@ describe('VacationCalculator', () => {
   });
 
   it('should sum multiple vacation novelties exactly', () => {
-    const result = calculator.calculate(new Decimal('3000000'), [
-      createVacation('3', 'Primeras vacaciones'),
-      createVacation('2.5', 'Vacaciones adicionales'),
-    ]);
+    const result = calculator.calculate(
+      new Decimal('3000000'),
+      [
+        createVacation('3', 'Primeras vacaciones'),
+        createVacation('2.5', 'Vacaciones adicionales'),
+      ],
+      30,
+    );
 
     expect(result.earned.toString()).toBe('550000');
     expect(result.days.toString()).toBe('5.5');
@@ -89,10 +103,20 @@ describe('VacationCalculator', () => {
       quantity: new Prisma.Decimal('5'),
     } as unknown as PayrollNovelty;
 
-    const result = calculator.calculate(new Decimal('3000000'), [novelty]);
+    const result = calculator.calculate(new Decimal('3000000'), [novelty], 30);
 
     expect(result.earned.toString()).toBe('0');
     expect(result.days.toString()).toBe('0');
     expect(result.concepts).toEqual([]);
+  });
+
+  it('should use the supplied monthly salary day basis', () => {
+    const result = calculator.calculate(
+      new Decimal('3000000'),
+      [createVacation('2')],
+      20,
+    );
+
+    expect(result.earned.toString()).toBe('300000');
   });
 });
