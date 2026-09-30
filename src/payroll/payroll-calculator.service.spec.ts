@@ -431,4 +431,38 @@ describe('PayrollCalculatorService', () => {
 
     expect(absenceConcept?.amount.toString()).toBe('300000');
   });
+
+  it('should propagate the supplied sick leave rules', () => {
+    const sickLeave = {
+      type: 'SICK_LEAVE',
+      dayType: PayrollDayType.REGULAR,
+      sickLeaveOrigin: SickLeaveOrigin.WORK_ACCIDENT,
+      sickLeaveStartDay: 1,
+      sickLeaveIbc: new Prisma.Decimal('3000000'),
+      quantity: new Prisma.Decimal('1'),
+      amount: null,
+      description: 'Incapacidad laboral',
+    } as unknown as PayrollNovelty;
+
+    const rules = {
+      ...DEFAULT_PAYROLL_RULES,
+      sickLeave: {
+        ...DEFAULT_PAYROLL_RULES.sickLeave,
+        monthlyIbcDayBasis: 20,
+      },
+    };
+
+    const result = calculator.calculate({
+      baseSalary: new Decimal('3000000'),
+      workedDays: 30,
+      novelties: [sickLeave],
+      rules,
+    });
+
+    const sickLeaveConcept = result.concepts.find(
+      (concept) => concept.code === 'SICK_LEAVE',
+    );
+
+    expect(sickLeaveConcept?.amount.toString()).toBe('150000');
+  });
 });

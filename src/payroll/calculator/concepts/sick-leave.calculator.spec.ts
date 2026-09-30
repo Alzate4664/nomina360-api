@@ -5,10 +5,13 @@ import {
   SickLeaveOrigin,
 } from '@prisma/client';
 import Decimal from 'decimal.js';
+import { DEFAULT_PAYROLL_RULES } from '../../rules/default-payroll-rules';
 import { SickLeaveCalculator } from './sick-leave.calculator';
 
 describe('SickLeaveCalculator', () => {
   let calculator: SickLeaveCalculator;
+
+  const defaultRules = DEFAULT_PAYROLL_RULES.sickLeave;
 
   beforeEach(() => {
     calculator = new SickLeaveCalculator();
@@ -35,9 +38,10 @@ describe('SickLeaveCalculator', () => {
     new Decimal('100000').times(2).dividedBy(3);
 
   it('should calculate common disease starting on day 1', () => {
-    const result = calculator.calculate([
-      createSickLeave(SickLeaveOrigin.COMMON_DISEASE, 1, '2'),
-    ]);
+    const result = calculator.calculate(
+      [createSickLeave(SickLeaveOrigin.COMMON_DISEASE, 1, '2')],
+      defaultRules,
+    );
 
     const expectedDaily = commonDiseaseDailyAmount();
     const expected = expectedDaily.plus(expectedDaily);
@@ -57,9 +61,10 @@ describe('SickLeaveCalculator', () => {
   });
 
   it('should calculate common disease between days 3 and 90', () => {
-    const result = calculator.calculate([
-      createSickLeave(SickLeaveOrigin.COMMON_DISEASE, 3, '3'),
-    ]);
+    const result = calculator.calculate(
+      [createSickLeave(SickLeaveOrigin.COMMON_DISEASE, 3, '3')],
+      defaultRules,
+    );
 
     const expectedDaily = commonDiseaseDailyAmount();
     const expected = expectedDaily.plus(expectedDaily).plus(expectedDaily);
@@ -68,9 +73,10 @@ describe('SickLeaveCalculator', () => {
   });
 
   it('should calculate common disease starting from day 91', () => {
-    const result = calculator.calculate([
-      createSickLeave(SickLeaveOrigin.COMMON_DISEASE, 91, '3'),
-    ]);
+    const result = calculator.calculate(
+      [createSickLeave(SickLeaveOrigin.COMMON_DISEASE, 91, '3')],
+      defaultRules,
+    );
 
     expect(result.earned.toString()).toBe('150000');
 
@@ -85,9 +91,10 @@ describe('SickLeaveCalculator', () => {
   });
 
   it('should calculate common disease crossing payment ranges', () => {
-    const result = calculator.calculate([
-      createSickLeave(SickLeaveOrigin.COMMON_DISEASE, 89, '4'),
-    ]);
+    const result = calculator.calculate(
+      [createSickLeave(SickLeaveOrigin.COMMON_DISEASE, 89, '4')],
+      defaultRules,
+    );
 
     const twoThirdsDay = commonDiseaseDailyAmount();
 
@@ -101,73 +108,134 @@ describe('SickLeaveCalculator', () => {
   });
 
   it('should calculate work accident sick leave', () => {
-    const result = calculator.calculate([
-      createSickLeave(SickLeaveOrigin.WORK_ACCIDENT, 1, '3'),
-    ]);
+    const result = calculator.calculate(
+      [createSickLeave(SickLeaveOrigin.WORK_ACCIDENT, 1, '3')],
+      defaultRules,
+    );
 
     expect(result.earned.toString()).toBe('300000');
     expect(Decimal.isDecimal(result.concepts[0].amount)).toBe(true);
   });
 
   it('should calculate occupational disease sick leave', () => {
-    const result = calculator.calculate([
-      createSickLeave(SickLeaveOrigin.OCCUPATIONAL_DISEASE, 1, '3'),
-    ]);
+    const result = calculator.calculate(
+      [createSickLeave(SickLeaveOrigin.OCCUPATIONAL_DISEASE, 1, '3')],
+      defaultRules,
+    );
 
     expect(result.earned.toString()).toBe('300000');
   });
 
   it('should use sick leave IBC instead of employee base salary', () => {
-    const result = calculator.calculate([
-      createSickLeave(SickLeaveOrigin.WORK_ACCIDENT, 1, '3', '4500000'),
-    ]);
+    const result = calculator.calculate(
+      [createSickLeave(SickLeaveOrigin.WORK_ACCIDENT, 1, '3', '4500000')],
+      defaultRules,
+    );
 
     expect(result.earned.toString()).toBe('450000');
   });
 
   it('should preserve exact decimal IBC arithmetic', () => {
-    const result = calculator.calculate([
-      createSickLeave(SickLeaveOrigin.WORK_ACCIDENT, 1, '3', '23345.4'),
-    ]);
+    const result = calculator.calculate(
+      [createSickLeave(SickLeaveOrigin.WORK_ACCIDENT, 1, '3', '23345.4')],
+      defaultRules,
+    );
 
     expect(result.earned.toString()).toBe('2334.54');
     expect(Decimal.isDecimal(result.concepts[0].amount)).toBe(true);
   });
 
   it('should ignore sick leave with zero days', () => {
-    const result = calculator.calculate([
-      createSickLeave(SickLeaveOrigin.COMMON_DISEASE, 1, '0'),
-    ]);
+    const result = calculator.calculate(
+      [createSickLeave(SickLeaveOrigin.COMMON_DISEASE, 1, '0')],
+      defaultRules,
+    );
 
     expect(result.earned.toString()).toBe('0');
     expect(result.concepts).toEqual([]);
   });
 
   it('should ignore sick leave with negative days', () => {
-    const result = calculator.calculate([
-      createSickLeave(SickLeaveOrigin.COMMON_DISEASE, 1, '-2'),
-    ]);
+    const result = calculator.calculate(
+      [createSickLeave(SickLeaveOrigin.COMMON_DISEASE, 1, '-2')],
+      defaultRules,
+    );
 
     expect(result.earned.toString()).toBe('0');
     expect(result.concepts).toEqual([]);
   });
 
   it('should ignore sick leave with invalid IBC', () => {
-    const result = calculator.calculate([
-      createSickLeave(SickLeaveOrigin.COMMON_DISEASE, 1, '2', '0'),
-    ]);
+    const result = calculator.calculate(
+      [createSickLeave(SickLeaveOrigin.COMMON_DISEASE, 1, '2', '0')],
+      defaultRules,
+    );
 
     expect(result.earned.toString()).toBe('0');
     expect(result.concepts).toEqual([]);
   });
 
   it('should return the total number of valid sick leave days as Decimal', () => {
-    const result = calculator.calculate([
-      createSickLeave(SickLeaveOrigin.COMMON_DISEASE, 1, '2'),
-      createSickLeave(SickLeaveOrigin.WORK_ACCIDENT, 1, '3'),
-    ]);
+    const result = calculator.calculate(
+      [
+        createSickLeave(SickLeaveOrigin.COMMON_DISEASE, 1, '2'),
+        createSickLeave(SickLeaveOrigin.WORK_ACCIDENT, 1, '3'),
+      ],
+      defaultRules,
+    );
 
     expect(Decimal.isDecimal(result.days)).toBe(true);
     expect(result.days.toString()).toBe('5');
+  });
+
+  it('should use the supplied monthly IBC day basis', () => {
+    const novelty = createSickLeave(
+      SickLeaveOrigin.WORK_ACCIDENT,
+      1,
+      '1',
+      '3000000',
+    );
+
+    const result = calculator.calculate([novelty], {
+      ...defaultRules,
+      monthlyIbcDayBasis: 20,
+    });
+
+    expect(result.earned.toString()).toBe('150000');
+  });
+
+  it('should use the supplied common disease ranges and rates', () => {
+    const novelty = createSickLeave(
+      SickLeaveOrigin.COMMON_DISEASE,
+      1,
+      '3',
+      '3000',
+    );
+
+    const result = calculator.calculate([novelty], {
+      ...defaultRules,
+      commonDiseaseFirstRangeEndDay: 1,
+      commonDiseaseFirstRate: new Decimal('0.5'),
+      commonDiseaseSecondRangeEndDay: 2,
+      commonDiseaseSecondRate: new Decimal('0.25'),
+    });
+
+    expect(result.earned.toString()).toBe('75');
+  });
+
+  it('should use the supplied work risk rate', () => {
+    const novelty = createSickLeave(
+      SickLeaveOrigin.WORK_ACCIDENT,
+      1,
+      '1',
+      '3000',
+    );
+
+    const result = calculator.calculate([novelty], {
+      ...defaultRules,
+      workRiskRate: new Decimal('0.8'),
+    });
+
+    expect(result.earned.toString()).toBe('80');
   });
 });

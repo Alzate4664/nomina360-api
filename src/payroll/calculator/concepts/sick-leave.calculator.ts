@@ -4,9 +4,18 @@ import Decimal from 'decimal.js';
 import { toDecimal } from '../../money/decimal';
 import { PayrollConceptAmount } from '../../money/payroll-money.types';
 
+interface SickLeaveCalculationRules {
+  readonly monthlyIbcDayBasis: number;
+  readonly commonDiseaseFirstRangeEndDay: number;
+  readonly commonDiseaseFirstRate: Decimal;
+  readonly commonDiseaseSecondRangeEndDay: number;
+  readonly commonDiseaseSecondRate: Decimal;
+  readonly workRiskRate: Decimal;
+}
+
 @Injectable()
 export class SickLeaveCalculator {
-  calculate(novelties: PayrollNovelty[]) {
+  calculate(novelties: PayrollNovelty[], rules: SickLeaveCalculationRules) {
     let earned = new Decimal(0);
     let totalDays = new Decimal(0);
 
@@ -34,7 +43,7 @@ export class SickLeaveCalculator {
 
       totalDays = totalDays.plus(days);
 
-      const dailyIbc = sickLeaveIbc.dividedBy(30);
+      const dailyIbc = sickLeaveIbc.dividedBy(rules.monthlyIbcDayBasis);
 
       let amount = new Decimal(0);
 
@@ -43,6 +52,7 @@ export class SickLeaveCalculator {
           dailyIbc,
           novelty.sickLeaveStartDay,
           days,
+          rules,
         );
       }
 
@@ -50,7 +60,7 @@ export class SickLeaveCalculator {
         novelty.sickLeaveOrigin === SickLeaveOrigin.WORK_ACCIDENT ||
         novelty.sickLeaveOrigin === SickLeaveOrigin.OCCUPATIONAL_DISEASE
       ) {
-        amount = dailyIbc.times(days);
+        amount = dailyIbc.times(days).times(rules.workRiskRate);
       }
 
       if (amount.lte(0)) {
@@ -78,6 +88,7 @@ export class SickLeaveCalculator {
     dailyIbc: Decimal,
     startDay: number,
     days: Decimal,
+    rules: SickLeaveCalculationRules,
   ) {
     let amount = new Decimal(0);
 
@@ -90,14 +101,14 @@ export class SickLeaveCalculator {
     for (let offset = 0; offset < dayCount; offset++) {
       const sickLeaveDay = startDay + offset;
 
-      if (sickLeaveDay <= 90) {
-        const dailyAmount = dailyIbc.times(2).dividedBy(3);
+      if (sickLeaveDay <= rules.commonDiseaseFirstRangeEndDay) {
+        const dailyAmount = dailyIbc.times(rules.commonDiseaseFirstRate);
         amount = amount.plus(dailyAmount);
         continue;
       }
 
-      if (sickLeaveDay <= 180) {
-        const dailyAmount = dailyIbc.times('0.5');
+      if (sickLeaveDay <= rules.commonDiseaseSecondRangeEndDay) {
+        const dailyAmount = dailyIbc.times(rules.commonDiseaseSecondRate);
         amount = amount.plus(dailyAmount);
       }
     }

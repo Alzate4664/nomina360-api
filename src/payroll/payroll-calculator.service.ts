@@ -50,7 +50,10 @@ export class PayrollCalculatorService {
       input.rules.salary.monthlyDayBasis,
     );
 
-    const sickLeaveResult = this.sickLeaveCalculator.calculate(input.novelties);
+    const sickLeaveResult = this.sickLeaveCalculator.calculate(
+      input.novelties,
+      input.rules.sickLeave,
+    );
 
     const vacationResult = this.vacationCalculator.calculate(
       input.baseSalary,
