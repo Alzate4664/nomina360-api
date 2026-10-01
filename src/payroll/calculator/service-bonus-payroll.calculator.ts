@@ -32,6 +32,7 @@ export class ServiceBonusPayrollCalculator {
     const serviceBonusResult = this.serviceBonusCalculator.calculate(
       input.baseSalary,
       input.accruedDays,
+      input.rules.serviceBonus.daysPerYear,
       transportAllowanceResult.earned,
     );
 

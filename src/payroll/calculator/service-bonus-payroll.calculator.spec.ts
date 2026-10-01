@@ -77,4 +77,28 @@ describe('ServiceBonusPayrollCalculator', () => {
 
     expect(result.earnedTotal.toString()).toBe('1800000');
   });
+
+  it('should propagate the supplied service bonus days per year', () => {
+    const rules = {
+      ...DEFAULT_PAYROLL_RULES,
+      serviceBonus: {
+        ...DEFAULT_PAYROLL_RULES.serviceBonus,
+        daysPerYear: 180,
+      },
+    };
+
+    const salaryLimit = rules.minimumWage.times(
+      rules.transportAllowance.salaryLimitInMinimumWages,
+    );
+
+    const baseSalary = salaryLimit.plus(1);
+
+    const result = calculator.calculate({
+      baseSalary,
+      accruedDays: 90,
+      rules,
+    });
+
+    expect(result.earnedTotal.eq(baseSalary.dividedBy(2))).toBe(true);
+  });
 });
