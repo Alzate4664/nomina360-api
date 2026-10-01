@@ -2,13 +2,26 @@ import { Injectable } from '@nestjs/common';
 import { ConceptType } from '@prisma/client';
 import Decimal from 'decimal.js';
 import { PayrollConceptAmount } from '../../money/payroll-money.types';
-import { PAYROLL_RATES } from '../config/payroll-rates.config';
+
+interface TransportAllowanceCalculationRules {
+  readonly minimumWage: Decimal;
+
+  readonly transportAllowance: {
+    readonly monthlyAmount: Decimal;
+    readonly salaryLimitInMinimumWages: Decimal;
+    readonly monthlyProrationDayBasis: number;
+  };
+}
 
 @Injectable()
 export class TransportAllowanceCalculator {
-  calculate(baseSalary: Decimal, workedDays: Decimal) {
-    const salaryLimit = new Decimal(PAYROLL_RATES.minimumWage).times(
-      PAYROLL_RATES.transportAllowance.salaryLimitInMinimumWages,
+  calculate(
+    baseSalary: Decimal,
+    workedDays: Decimal,
+    rules: TransportAllowanceCalculationRules,
+  ) {
+    const salaryLimit = rules.minimumWage.times(
+      rules.transportAllowance.salaryLimitInMinimumWages,
     );
 
     if (baseSalary.gt(salaryLimit) || workedDays.lte(0)) {
@@ -18,10 +31,13 @@ export class TransportAllowanceCalculator {
       };
     }
 
-    const eligibleDays = Decimal.min(workedDays, 30);
+    const eligibleDays = Decimal.min(
+      workedDays,
+      rules.transportAllowance.monthlyProrationDayBasis,
+    );
 
-    const amount = new Decimal(PAYROLL_RATES.transportAllowance.monthlyAmount)
-      .dividedBy(30)
+    const amount = rules.transportAllowance.monthlyAmount
+      .dividedBy(rules.transportAllowance.monthlyProrationDayBasis)
       .times(eligibleDays)
       .toDecimalPlaces(0, Decimal.ROUND_HALF_UP);
 

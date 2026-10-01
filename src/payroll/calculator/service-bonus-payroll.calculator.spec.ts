@@ -1,5 +1,5 @@
 import Decimal from 'decimal.js';
-import { PAYROLL_RATES } from './config/payroll-rates.config';
+import { DEFAULT_PAYROLL_RULES } from '../rules/default-payroll-rules';
 import { ServiceBonusCalculator } from './concepts/service-bonus.calculator';
 import { TransportAllowanceCalculator } from './concepts/transport-allowance.calculator';
 import { ServiceBonusPayrollCalculator } from './service-bonus-payroll.calculator';
@@ -16,8 +16,9 @@ describe('ServiceBonusPayrollCalculator', () => {
 
   it('should include transport allowance in service bonus base for eligible employee', () => {
     const result = calculator.calculate({
-      baseSalary: new Decimal(PAYROLL_RATES.minimumWage),
+      baseSalary: DEFAULT_PAYROLL_RULES.minimumWage,
       accruedDays: 180,
+      rules: DEFAULT_PAYROLL_RULES,
     });
 
     expect(Decimal.isDecimal(result.earnedTotal)).toBe(true);
@@ -30,8 +31,8 @@ describe('ServiceBonusPayrollCalculator', () => {
   });
 
   it('should exclude transport allowance above salary limit', () => {
-    const salaryLimit = new Decimal(PAYROLL_RATES.minimumWage).times(
-      PAYROLL_RATES.transportAllowance.salaryLimitInMinimumWages,
+    const salaryLimit = DEFAULT_PAYROLL_RULES.minimumWage.times(
+      DEFAULT_PAYROLL_RULES.transportAllowance.salaryLimitInMinimumWages,
     );
 
     const baseSalary = salaryLimit.plus(1);
@@ -39,6 +40,7 @@ describe('ServiceBonusPayrollCalculator', () => {
     const result = calculator.calculate({
       baseSalary,
       accruedDays: 180,
+      rules: DEFAULT_PAYROLL_RULES,
     });
 
     expect(result.earnedTotal.eq(baseSalary.dividedBy(2))).toBe(true);
@@ -48,11 +50,31 @@ describe('ServiceBonusPayrollCalculator', () => {
     const result = calculator.calculate({
       baseSalary: new Decimal('3000000'),
       accruedDays: 90,
+      rules: DEFAULT_PAYROLL_RULES,
     });
 
     expect(result.earnedTotal.toString()).toBe('812273.75');
     expect(result.netPay.eq(result.earnedTotal)).toBe(true);
     expect(result.concepts).toHaveLength(1);
     expect(Decimal.isDecimal(result.concepts[0].amount)).toBe(true);
+  });
+
+  it('should propagate transport allowance rules into service bonus base', () => {
+    const rules = {
+      ...DEFAULT_PAYROLL_RULES,
+      minimumWage: new Decimal('5000000'),
+      transportAllowance: {
+        ...DEFAULT_PAYROLL_RULES.transportAllowance,
+        monthlyAmount: new Decimal('600000'),
+      },
+    };
+
+    const result = calculator.calculate({
+      baseSalary: new Decimal('3000000'),
+      accruedDays: 180,
+      rules,
+    });
+
+    expect(result.earnedTotal.toString()).toBe('1800000');
   });
 });

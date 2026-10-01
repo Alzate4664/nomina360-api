@@ -1,5 +1,5 @@
 import Decimal from 'decimal.js';
-import { PAYROLL_RATES } from './config/payroll-rates.config';
+import { DEFAULT_PAYROLL_RULES } from '../rules/default-payroll-rules';
 import { SeveranceCalculator } from './concepts/severance.calculator';
 import { TransportAllowanceCalculator } from './concepts/transport-allowance.calculator';
 import { SeverancePayrollCalculator } from './severance-payroll.calculator';
@@ -16,12 +16,13 @@ describe('SeverancePayrollCalculator', () => {
 
   it('should include transport allowance in severance base for eligible employee', () => {
     const result = calculator.calculate({
-      baseSalary: new Decimal(PAYROLL_RATES.minimumWage),
+      baseSalary: DEFAULT_PAYROLL_RULES.minimumWage,
       accruedDays: 360,
+      rules: DEFAULT_PAYROLL_RULES,
     });
 
-    const expectedBase = new Decimal(PAYROLL_RATES.minimumWage).plus(
-      PAYROLL_RATES.transportAllowance.monthlyAmount,
+    const expectedBase = DEFAULT_PAYROLL_RULES.minimumWage.plus(
+      DEFAULT_PAYROLL_RULES.transportAllowance.monthlyAmount,
     );
 
     expect(Decimal.isDecimal(result.severanceBase)).toBe(true);
@@ -37,8 +38,8 @@ describe('SeverancePayrollCalculator', () => {
   });
 
   it('should exclude transport allowance from severance base above salary limit', () => {
-    const salaryLimit = new Decimal(PAYROLL_RATES.minimumWage).times(
-      PAYROLL_RATES.transportAllowance.salaryLimitInMinimumWages,
+    const salaryLimit = DEFAULT_PAYROLL_RULES.minimumWage.times(
+      DEFAULT_PAYROLL_RULES.transportAllowance.salaryLimitInMinimumWages,
     );
 
     const baseSalary = salaryLimit.plus(1);
@@ -46,6 +47,7 @@ describe('SeverancePayrollCalculator', () => {
     const result = calculator.calculate({
       baseSalary,
       accruedDays: 360,
+      rules: DEFAULT_PAYROLL_RULES,
     });
 
     expect(result.severanceBase.toString()).toBe(baseSalary.toString());
@@ -55,10 +57,30 @@ describe('SeverancePayrollCalculator', () => {
     const result = calculator.calculate({
       baseSalary: new Decimal('3000000'),
       accruedDays: 180,
+      rules: DEFAULT_PAYROLL_RULES,
     });
 
     expect(result.earnedTotal.gt(0)).toBe(true);
     expect(result.netPay.eq(result.earnedTotal)).toBe(true);
     expect(result.concepts).toHaveLength(2);
+  });
+
+  it('should propagate transport allowance rules into severance base', () => {
+    const rules = {
+      ...DEFAULT_PAYROLL_RULES,
+      minimumWage: new Decimal('5000000'),
+      transportAllowance: {
+        ...DEFAULT_PAYROLL_RULES.transportAllowance,
+        monthlyAmount: new Decimal('600000'),
+      },
+    };
+
+    const result = calculator.calculate({
+      baseSalary: new Decimal('3000000'),
+      accruedDays: 360,
+      rules,
+    });
+
+    expect(result.severanceBase.toString()).toBe('3600000');
   });
 });

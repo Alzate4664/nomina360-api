@@ -465,4 +465,30 @@ describe('PayrollCalculatorService', () => {
 
     expect(sickLeaveConcept?.amount.toString()).toBe('150000');
   });
+
+  it('should propagate the supplied transport allowance rules', () => {
+    const rules = {
+      ...DEFAULT_PAYROLL_RULES,
+      minimumWage: new Decimal('3000000'),
+      transportAllowance: {
+        ...DEFAULT_PAYROLL_RULES.transportAllowance,
+        monthlyAmount: new Decimal('120000'),
+        salaryLimitInMinimumWages: new Decimal('2'),
+        monthlyProrationDayBasis: 20,
+      },
+    };
+
+    const result = calculator.calculate({
+      baseSalary: new Decimal('4000000'),
+      workedDays: 10,
+      novelties: [],
+      rules,
+    });
+
+    const transportConcept = result.concepts.find(
+      (concept) => concept.code === 'TRANSPORT_ALLOWANCE',
+    );
+
+    expect(transportConcept?.amount.toString()).toBe('60000');
+  });
 });

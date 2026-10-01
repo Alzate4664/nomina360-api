@@ -116,6 +116,10 @@ export class PayrollCalculatorService {
       this.transportAllowanceCalculator.calculate(
         input.baseSalary,
         ordinaryWorkedDays,
+        {
+          minimumWage: input.rules.minimumWage,
+          transportAllowance: input.rules.transportAllowance,
+        },
       );
 
     const absenceResult = this.absenceCalculator.calculate(

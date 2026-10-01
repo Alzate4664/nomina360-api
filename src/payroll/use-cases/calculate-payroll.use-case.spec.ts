@@ -9,6 +9,7 @@ import { PayrollCalculatorService } from '../payroll-calculator.service';
 import { CalculatePayrollUseCase } from './calculate-payroll.use-case';
 import { ServiceBonusPayrollCalculator } from '../calculator/service-bonus-payroll.calculator';
 import Decimal from 'decimal.js';
+import { DEFAULT_PAYROLL_RULES } from '../rules/default-payroll-rules';
 
 describe('CalculatePayrollUseCase', () => {
   let useCase: CalculatePayrollUseCase;
@@ -524,6 +525,8 @@ describe('CalculatePayrollUseCase', () => {
     expect(severanceInput.baseSalary.toString()).toBe('3000000');
     expect(severanceInput.accruedDays).toBe(360);
 
+    expect(severanceInput.rules).toBe(DEFAULT_PAYROLL_RULES);
+
     expect(prismaMock.$transaction).toHaveBeenCalledTimes(1);
     expect(payrollCalculatorMock.calculate).not.toHaveBeenCalled();
     expect(prismaMock.payrollNovelty.findMany).not.toHaveBeenCalled();
@@ -624,6 +627,8 @@ describe('CalculatePayrollUseCase', () => {
     expect(Decimal.isDecimal(serviceBonusInput.baseSalary)).toBe(true);
     expect(serviceBonusInput.baseSalary.toString()).toBe('3000000');
     expect(serviceBonusInput.accruedDays).toBe(180);
+
+    expect(serviceBonusInput.rules).toBe(DEFAULT_PAYROLL_RULES);
 
     expect(payrollCalculatorMock.calculate).not.toHaveBeenCalled();
     expect(severancePayrollCalculatorMock.calculate).not.toHaveBeenCalled();

@@ -52,6 +52,7 @@ export class TerminationPayrollCalculator {
     const severanceResult = this.severancePayrollCalculator.calculate({
       baseSalary: input.baseSalary,
       accruedDays: severanceDays,
+      rules: input.rules,
     });
 
     const terminationMonth = input.terminationDate.getUTCMonth() + 1;
@@ -71,6 +72,7 @@ export class TerminationPayrollCalculator {
     const serviceBonusResult = this.serviceBonusPayrollCalculator.calculate({
       baseSalary: input.baseSalary,
       accruedDays: serviceBonusDays,
+      rules: input.rules,
     });
 
     const vacationResult = this.terminationVacationCalculator.calculate(

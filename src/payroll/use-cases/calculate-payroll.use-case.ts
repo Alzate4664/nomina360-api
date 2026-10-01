@@ -199,6 +199,7 @@ export class CalculatePayrollUseCase {
         calculation = this.severancePayrollCalculator.calculate({
           baseSalary,
           accruedDays,
+          rules: DEFAULT_PAYROLL_RULES,
         });
       } else if (payrollType === PayrollType.BONUS) {
         const semesterStartMonth = month <= 6 ? 1 : 7;
@@ -217,6 +218,7 @@ export class CalculatePayrollUseCase {
         calculation = this.serviceBonusPayrollCalculator.calculate({
           baseSalary,
           accruedDays,
+          rules: DEFAULT_PAYROLL_RULES,
         });
       } else {
         calculation = this.calculator.calculate({

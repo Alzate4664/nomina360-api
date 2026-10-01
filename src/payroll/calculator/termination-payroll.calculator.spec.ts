@@ -189,4 +189,27 @@ describe('TerminationPayrollCalculator', () => {
     expect(result.salary.toString()).toBe('1200000');
     expect(result.vacation.toString()).toBe('300000');
   });
+
+  it('should propagate transport allowance rules to benefit calculations', () => {
+    const rules = {
+      ...DEFAULT_PAYROLL_RULES,
+      minimumWage: new Decimal('5000000'),
+      transportAllowance: {
+        ...DEFAULT_PAYROLL_RULES.transportAllowance,
+        monthlyAmount: new Decimal('600000'),
+      },
+    };
+
+    const result = calculator.calculate({
+      baseSalary: new Decimal('3000000'),
+      employeeStartDate: new Date('2024-01-01T00:00:00.000Z'),
+      terminationDate: new Date('2026-09-08T00:00:00.000Z'),
+      unpaidSalaryStartDate: new Date('2026-09-01T00:00:00.000Z'),
+      pendingVacationDays: new Decimal('0'),
+      rules,
+    });
+
+    expect(result.serviceBonusDays).toBe(68);
+    expect(result.serviceBonus.toString()).toBe('680000');
+  });
 });
