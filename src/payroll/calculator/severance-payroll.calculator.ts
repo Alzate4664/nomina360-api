@@ -40,6 +40,7 @@ export class SeverancePayrollCalculator {
     const severanceResult = this.severanceCalculator.calculate({
       severanceBase,
       accruedDays: input.accruedDays,
+      rules: input.rules.severance,
     });
 
     return {

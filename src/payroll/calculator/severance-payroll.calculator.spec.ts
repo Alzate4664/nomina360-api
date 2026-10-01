@@ -83,4 +83,29 @@ describe('SeverancePayrollCalculator', () => {
 
     expect(result.severanceBase.toString()).toBe('3600000');
   });
+
+  it('should propagate the supplied severance rules', () => {
+    const rules = {
+      ...DEFAULT_PAYROLL_RULES,
+      severance: {
+        daysPerYear: 180,
+        interestAnnualRate: new Decimal('0.20'),
+      },
+    };
+
+    const salaryLimit = rules.minimumWage.times(
+      rules.transportAllowance.salaryLimitInMinimumWages,
+    );
+
+    const baseSalary = salaryLimit.plus(1);
+
+    const result = calculator.calculate({
+      baseSalary,
+      accruedDays: 90,
+      rules,
+    });
+
+    expect(result.severanceBase.eq(baseSalary)).toBe(true);
+    expect(result.earnedTotal.eq(baseSalary.times('0.55'))).toBe(true);
+  });
 });

@@ -1,6 +1,9 @@
 import { ConceptType } from '@prisma/client';
 import Decimal from 'decimal.js';
 import { SeveranceCalculator } from './severance.calculator';
+import { DEFAULT_PAYROLL_RULES } from '../../rules/default-payroll-rules';
+
+const defaultRules = DEFAULT_PAYROLL_RULES.severance;
 
 describe('SeveranceCalculator', () => {
   let calculator: SeveranceCalculator;
@@ -13,6 +16,7 @@ describe('SeveranceCalculator', () => {
     const result = calculator.calculate({
       severanceBase: new Decimal('3000000'),
       accruedDays: 360,
+      rules: defaultRules,
     });
 
     expect(Decimal.isDecimal(result.severance)).toBe(true);
@@ -32,6 +36,7 @@ describe('SeveranceCalculator', () => {
     const result = calculator.calculate({
       severanceBase: new Decimal('3000000'),
       accruedDays: 180,
+      rules: defaultRules,
     });
 
     expect(Decimal.isDecimal(result.severance)).toBe(true);
@@ -42,6 +47,7 @@ describe('SeveranceCalculator', () => {
     const result = calculator.calculate({
       severanceBase: new Decimal('3000000'),
       accruedDays: 360,
+      rules: defaultRules,
     });
 
     expect(Decimal.isDecimal(result.interest)).toBe(true);
@@ -59,6 +65,7 @@ describe('SeveranceCalculator', () => {
     const result = calculator.calculate({
       severanceBase: new Decimal('3000000'),
       accruedDays: 180,
+      rules: defaultRules,
     });
 
     expect(result.interest.toString()).toBe('90000');
@@ -68,6 +75,7 @@ describe('SeveranceCalculator', () => {
     const result = calculator.calculate({
       severanceBase: new Decimal('700362'),
       accruedDays: 1,
+      rules: defaultRules,
     });
 
     expect(Decimal.isDecimal(result.severance)).toBe(true);
@@ -81,6 +89,7 @@ describe('SeveranceCalculator', () => {
     const result = calculator.calculate({
       severanceBase: new Decimal('3000000'),
       accruedDays: 0,
+      rules: defaultRules,
     });
 
     expect(Decimal.isDecimal(result.severance)).toBe(true);
@@ -97,6 +106,7 @@ describe('SeveranceCalculator', () => {
     const result = calculator.calculate({
       severanceBase: new Decimal('3000000'),
       accruedDays: -10,
+      rules: defaultRules,
     });
 
     expect(result.severance.toString()).toBe('0');
@@ -109,11 +119,39 @@ describe('SeveranceCalculator', () => {
     const result = calculator.calculate({
       severanceBase: new Decimal('0'),
       accruedDays: 360,
+      rules: defaultRules,
     });
 
     expect(result.severance.toString()).toBe('0');
     expect(result.interest.toString()).toBe('0');
     expect(result.total.toString()).toBe('0');
     expect(result.concepts).toEqual([]);
+  });
+
+  it('should use the supplied severance days per year', () => {
+    const result = calculator.calculate({
+      severanceBase: new Decimal('3000000'),
+      accruedDays: 90,
+      rules: {
+        ...defaultRules,
+        daysPerYear: 180,
+      },
+    });
+
+    expect(result.severance.toString()).toBe('1500000');
+  });
+
+  it('should use the supplied severance interest annual rate', () => {
+    const result = calculator.calculate({
+      severanceBase: new Decimal('3000000'),
+      accruedDays: 360,
+      rules: {
+        ...defaultRules,
+        interestAnnualRate: new Decimal('0.20'),
+      },
+    });
+
+    expect(result.severance.toString()).toBe('3000000');
+    expect(result.interest.toString()).toBe('600000');
   });
 });
