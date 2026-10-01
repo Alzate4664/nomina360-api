@@ -8,8 +8,8 @@
 Nómina360 calcula resultados laborales y financieros que dependen de parámetros
 y reglas que pueden cambiar con el tiempo.
 
-Actualmente varias reglas se encuentran centralizadas en PAYROLL_RATES, mientras
-otras permanecen hardcodeadas en los calculadores.
+Al momento de adoptar esta decisión, varias reglas se encontraban centralizadas
+en PAYROLL_RATES, mientras otras permanecían hardcodeadas en los calculadores.
 
 Los resultados de PayrollPeriod y EmploymentTermination se almacenan actualmente
 como el último cálculo materializado. Las recalculaciones reemplazan los conceptos

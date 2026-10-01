@@ -6,7 +6,6 @@ import {
   SickLeaveOrigin,
 } from '@prisma/client';
 import Decimal from 'decimal.js';
-import { PAYROLL_RATES } from './calculator/config/payroll-rates.config';
 import { AbsenceCalculator } from './calculator/concepts/absence.calculator';
 import { BaseSalaryCalculator } from './calculator/concepts/base-salary.calculator';
 import { BonusCalculator } from './calculator/concepts/bonus.calculator';
@@ -45,7 +44,7 @@ describe('PayrollCalculatorService', () => {
   });
 
   it('should include transport allowance in earned total but exclude it from health and pension base', () => {
-    const baseSalary = new Decimal(PAYROLL_RATES.minimumWage);
+    const baseSalary = DEFAULT_PAYROLL_RULES.minimumWage;
 
     const result = calculator.calculate({
       baseSalary,
@@ -54,9 +53,8 @@ describe('PayrollCalculatorService', () => {
       rules: DEFAULT_PAYROLL_RULES,
     });
 
-    const expectedTransportAllowance = new Decimal(
-      PAYROLL_RATES.transportAllowance.monthlyAmount,
-    );
+    const expectedTransportAllowance =
+      DEFAULT_PAYROLL_RULES.transportAllowance.monthlyAmount;
 
     const expectedHealth = baseSalary.times('0.04');
     const expectedPension = baseSalary.times('0.04');
@@ -98,12 +96,13 @@ describe('PayrollCalculatorService', () => {
     const expectedOrdinarySalary = new Decimal('2700000');
     const expectedSickLeave = new Decimal('300000');
 
-    const expectedTransportAllowance = new Decimal(
-      PAYROLL_RATES.transportAllowance.monthlyAmount,
-    )
-      .dividedBy(30)
-      .times(27)
-      .toDecimalPlaces(0, Decimal.ROUND_HALF_UP);
+    const expectedTransportAllowance =
+      DEFAULT_PAYROLL_RULES.transportAllowance.monthlyAmount
+        .dividedBy(
+          DEFAULT_PAYROLL_RULES.transportAllowance.monthlyProrationDayBasis,
+        )
+        .times(27)
+        .toDecimalPlaces(0, Decimal.ROUND_HALF_UP);
 
     const expectedContributionBase =
       expectedOrdinarySalary.plus(expectedSickLeave);
@@ -145,7 +144,7 @@ describe('PayrollCalculatorService', () => {
   });
 
   it('should exclude vacation days from ordinary salary and transport allowance', () => {
-    const baseSalary = new Decimal(PAYROLL_RATES.minimumWage);
+    const baseSalary = DEFAULT_PAYROLL_RULES.minimumWage;
 
     const vacationNovelty = {
       type: 'VACATION',
@@ -185,12 +184,13 @@ describe('PayrollCalculatorService', () => {
       baseSalaryConcept?.amount.plus(vacationConcept!.amount).eq(baseSalary),
     ).toBe(true);
 
-    const expectedTransportAllowance = new Decimal(
-      PAYROLL_RATES.transportAllowance.monthlyAmount,
-    )
-      .dividedBy(30)
-      .times(25)
-      .toDecimalPlaces(0, Decimal.ROUND_HALF_UP);
+    const expectedTransportAllowance =
+      DEFAULT_PAYROLL_RULES.transportAllowance.monthlyAmount
+        .dividedBy(
+          DEFAULT_PAYROLL_RULES.transportAllowance.monthlyProrationDayBasis,
+        )
+        .times(25)
+        .toDecimalPlaces(0, Decimal.ROUND_HALF_UP);
 
     expect(transportConcept?.amount.toString()).toBe(
       expectedTransportAllowance.toString(),
@@ -262,12 +262,13 @@ describe('PayrollCalculatorService', () => {
       (concept) => concept.code === 'TRANSPORT_ALLOWANCE',
     );
 
-    const expectedTransportAllowance = new Decimal(
-      PAYROLL_RATES.transportAllowance.monthlyAmount,
-    )
-      .dividedBy(30)
-      .times(27)
-      .toDecimalPlaces(0, Decimal.ROUND_HALF_UP);
+    const expectedTransportAllowance =
+      DEFAULT_PAYROLL_RULES.transportAllowance.monthlyAmount
+        .dividedBy(
+          DEFAULT_PAYROLL_RULES.transportAllowance.monthlyProrationDayBasis,
+        )
+        .times(27)
+        .toDecimalPlaces(0, Decimal.ROUND_HALF_UP);
 
     expect(transportConcept?.amount.toString()).toBe(
       expectedTransportAllowance.toString(),
