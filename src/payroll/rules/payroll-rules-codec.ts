@@ -52,6 +52,11 @@ export interface PayrollRulesPayloadV1 {
   };
 }
 
+export interface SerializedPayrollRulesSnapshotV1 {
+  readonly schemaVersion: typeof PAYROLL_RULES_SCHEMA_VERSION;
+  readonly rulesPayload: PayrollRulesPayloadV1;
+}
+
 export class PayrollRulesPayloadValidationError extends Error {
   constructor(message: string) {
     super(message);
@@ -72,9 +77,7 @@ export function parsePayrollRulesSnapshot(
   return parsePayrollRulesPayloadV1(payload);
 }
 
-export function serializePayrollRulesV1(
-  rules: PayrollRules,
-): PayrollRulesPayloadV1 {
+function serializePayrollRulesV1(rules: PayrollRules): PayrollRulesPayloadV1 {
   return {
     minimumWage: rules.minimumWage.toString(),
 
@@ -127,6 +130,15 @@ export function serializePayrollRulesV1(
         rules.sickLeave.commonDiseaseSecondRate.toString(),
       workRiskRate: rules.sickLeave.workRiskRate.toString(),
     },
+  };
+}
+
+export function serializePayrollRulesSnapshot(
+  rules: PayrollRules,
+): SerializedPayrollRulesSnapshotV1 {
+  return {
+    schemaVersion: PAYROLL_RULES_SCHEMA_VERSION,
+    rulesPayload: serializePayrollRulesV1(rules),
   };
 }
 
