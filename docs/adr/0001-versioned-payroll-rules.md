@@ -96,6 +96,66 @@ para aplicar distintas vigencias dentro de un mismo período con precisión.
 Los campos appliedRuleSetId en conceptos se introducirán únicamente cuando exista
 soporte para fechas efectivas y cálculo segmentado por vigencia.
 
+### 6.1. Política temporal operativa inicial
+
+La primera integración de PayrollRuleSet no asumirá que una única fecha representa
+la aplicabilidad legal de todos los conceptos de nómina.
+
+`effectiveBusinessDate` será inicialmente una fecha de resolución técnica del
+snapshot regulatorio utilizado por un cálculo de una sola vigencia.
+
+Para los tipos de nómina periódicos:
+
+- MONTHLY
+- SEMIMONTHLY
+- WEEKLY
+- BIWEEKLY
+
+el período completo deberá estar cubierto por un único PayrollRuleSet publicado.
+
+La aplicación resolverá el RuleSet aplicable a `startDate` y `endDate`. El cálculo
+solo podrá continuar cuando ambos extremos resuelvan al mismo `ruleSetId`.
+
+Si los extremos resuelven versiones distintas, o alguna fecha no tiene un RuleSet
+publicado aplicable, el cálculo será rechazado explícitamente.
+
+No se seleccionará silenciosamente la versión correspondiente únicamente a
+`startDate`, `endDate`, `paymentDate` ni a la fecha de ejecución.
+
+Esta restricción es temporal. Cuando PayrollNovelty disponga de temporalidad de
+negocio suficiente, el motor podrá evolucionar hacia cálculo segmentado por
+vigencia.
+
+### 6.2. Nóminas especiales
+
+BONUS y SEVERANCE utilizan actualmente un único conjunto de reglas para cálculos
+cuyo período de causación se deriva de `year` y `month`.
+
+La fecha regulatoria exacta aplicable a estos cálculos no queda definida por este
+ADR. No se adoptará una fecha de corte arbitraria únicamente para completar la
+integración técnica de PayrollRuleSet.
+
+EXTRAORDINARY tampoco tendrá una política implícita mientras no exista una fecha o
+intervalo de negocio explícito suficiente para resolver las reglas.
+
+PayrollType.TERMINATION no se integrará al mecanismo de resolución hasta decidir su
+relación con el agregado EmploymentTermination existente.
+
+### 6.3. EmploymentTermination
+
+EmploymentTermination continuará siendo un agregado independiente de PayrollPeriod.
+
+Para una primera migración técnica que conserve el comportamiento actual,
+`terminationDate` actuará inicialmente como `effectiveBusinessDate` técnico
+del único snapshot regulatorio utilizado por el cálculo.
+
+Esta decisión representa una política técnica de resolución y no certifica que
+`terminationDate` sea la fecha legal aplicable individualmente a salario pendiente,
+cesantías, prima, vacaciones u otros conceptos.
+
+La eventual resolución por concepto requerirá mayor temporalidad y validación
+jurídica especializada.
+
 ### 7. Reglas legales y políticas empresariales
 
 PayrollRuleSet representará legislación/regulación.
@@ -175,6 +235,12 @@ financieros independientemente de PayrollPeriod.
 - La exactitud legal de los valores actuales no queda certificada por este ADR.
 - Las reglas deberán ser validadas con fuentes oficiales y revisión especializada
   antes del uso comercial en producción.
+- `effectiveBusinessDate` no debe interpretarse automáticamente como la fecha legal
+  aplicable a todos los conceptos incluidos en un cálculo.
+- BONUS, SEVERANCE y EXTRAORDINARY requieren una política temporal específica antes
+  de consumir PayrollRuleSet en producción.
+- EmploymentTermination utilizará inicialmente una única versión por compatibilidad
+  con el motor actual; esto no sustituye la validación legal por concepto.
 
 ## Reversibility
 
