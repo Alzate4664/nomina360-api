@@ -45,6 +45,12 @@ const PERIODIC_PAYROLL_TYPES = new Set<PayrollType>([
   PayrollType.BIWEEKLY,
 ]);
 
+export function hasPayrollPeriodRuleSetPolicy(
+  payrollType: PayrollType,
+): boolean {
+  return PERIODIC_PAYROLL_TYPES.has(payrollType);
+}
+
 @Injectable()
 export class PayrollRuleSetSelectionPolicy {
   constructor(private readonly resolver: PayrollRulesResolver) {}
@@ -53,7 +59,7 @@ export class PayrollRuleSetSelectionPolicy {
     jurisdictionCode: string,
     period: PayrollPeriodRuleSelectionInput,
   ): Promise<SelectedPayrollRuleSet> {
-    if (!PERIODIC_PAYROLL_TYPES.has(period.payrollType)) {
+    if (!hasPayrollPeriodRuleSetPolicy(period.payrollType)) {
       throw new PayrollRuleSetSelectionError(
         'PAYROLL_TYPE_TEMPORAL_POLICY_UNDEFINED',
         `Payroll type ${period.payrollType} does not yet have a payroll rule set temporal policy`,

@@ -4,6 +4,7 @@ import request from 'supertest';
 import { AppModule } from '../src/app.module';
 import { AuditService } from '../src/audit/audit.service';
 import { PrismaService } from '../src/prisma/prisma.service';
+import { E2E_CO_PAYROLL_RULE_SET_ID } from './fixtures/payroll-rule-set.fixture';
 
 describe('Nomina360 API (e2e)', () => {
   let app: INestApplication;
@@ -225,6 +226,41 @@ if (rollbackPeriodIds.length > 0) {
       }
 
       if (temporalPayrollPeriodId) {
+        const temporalPayrollItems = await prisma.payrollItem.findMany({
+          where: {
+            payrollPeriodId: temporalPayrollPeriodId,
+          },
+          select: {
+            id: true,
+          },
+        });
+
+        const temporalPayrollItemIds = temporalPayrollItems.map(
+          (item) => item.id,
+        );
+
+        if (temporalPayrollItemIds.length > 0) {
+          await prisma.payrollConceptDetail.deleteMany({
+            where: {
+              payrollItemId: {
+                in: temporalPayrollItemIds,
+              },
+            },
+          });
+        }
+
+        await prisma.payrollItem.deleteMany({
+          where: {
+            payrollPeriodId: temporalPayrollPeriodId,
+          },
+        });
+
+        await prisma.payrollNovelty.deleteMany({
+          where: {
+            payrollPeriodId: temporalPayrollPeriodId,
+          },
+        });
+
         await prisma.payrollPeriod.deleteMany({
           where: {
             id: temporalPayrollPeriodId,
@@ -613,6 +649,32 @@ if (rollbackPeriodIds.length > 0) {
     expect(response.body.paymentDate).toBe('2099-09-01T00:00:00.000Z');
 
     temporalPayrollPeriodId = response.body.id;
+  });
+
+  it('POST /payroll/periods/:id/calculate debe fijar el PayrollRuleSet publicado aplicable', async () => {
+    expect(temporalPayrollPeriodId).toBeDefined();
+
+    if (!temporalPayrollPeriodId) {
+      throw new Error('Se esperaba el período MONTHLY temporal E2E');
+    }
+
+    await request(app.getHttpServer())
+      .post(`/payroll/periods/${temporalPayrollPeriodId}/calculate`)
+      .set('Authorization', `Bearer ${ownerToken}`)
+      .expect(201);
+
+    const period = await prisma.payrollPeriod.findUniqueOrThrow({
+      where: {
+        id: temporalPayrollPeriodId,
+      },
+      select: {
+        status: true,
+        calculatedRuleSetId: true,
+      },
+    });
+
+    expect(period.status).toBe('CALCULATED');
+    expect(period.calculatedRuleSetId).toBe(E2E_CO_PAYROLL_RULE_SET_ID);
   });
 
   it('POST /payroll/periods debe permitir dos SEMIMONTHLY no solapadas en el mismo mes', async () => {
