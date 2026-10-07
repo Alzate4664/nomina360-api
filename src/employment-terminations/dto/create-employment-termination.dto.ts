@@ -4,6 +4,7 @@ import {
   IsEnum,
   IsOptional,
   IsString,
+  Matches,
   MaxLength,
 } from 'class-validator';
 
@@ -12,6 +13,9 @@ export class CreateEmploymentTerminationDto {
   employeeId!: string;
 
   @IsDateString()
+  @Matches(/^\d{4}-\d{2}-\d{2}$/, {
+    message: 'terminationDate debe tener formato YYYY-MM-DD',
+  })
   terminationDate!: string;
 
   @IsEnum(TerminationReason)

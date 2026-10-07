@@ -1394,7 +1394,7 @@ it('POST /payroll/periods/:id/calculate debe restaurar la liquidación anterior 
         department: 'Pruebas',
         contractType: 'INDEFINITE',
         baseSalary: 3000000,
-        startDate: '2026-01-15',
+        startDate: '2099-01-15',
         eps: 'Sura',
         pensionFund: 'Proteccion',
         arl: 'Positiva',
@@ -1414,7 +1414,7 @@ it('POST /payroll/periods/:id/calculate debe restaurar la liquidación anterior 
       .set('Authorization', `Bearer ${ownerToken}`)
       .send({
         employeeId: terminationEmployeeId,
-        terminationDate: '2026-09-08',
+        terminationDate: '2099-09-08',
         reason: 'RESIGNATION',
         notes: 'Terminación automática E2E',
       })
@@ -1432,12 +1432,13 @@ it('POST /payroll/periods/:id/calculate debe restaurar la liquidación anterior 
       .post(`/employment-terminations/${employmentTerminationId}/calculate`)
       .set('Authorization', `Bearer ${ownerToken}`)
       .send({
-        unpaidSalaryStartDate: '2026-09-01',
+        unpaidSalaryStartDate: '2099-09-01',
         pendingVacationDays: 7.5,
       })
       .expect(201);
 
     expect(response.body.status).toBe('CALCULATED');
+    expect(response.body.calculatedRuleSetId).toBe(E2E_CO_PAYROLL_RULE_SET_ID);
     expect(response.body.calculatedAt).toBeDefined();
     expect(Number(response.body.earnedTotal)).toBeGreaterThan(0);
 
