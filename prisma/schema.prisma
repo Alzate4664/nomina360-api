@@ -33,7 +33,7 @@ model User {
   isActive     Boolean  @default(true)
   createdAt    DateTime @default(now())
 
-  company Company? @relation(fields: [companyId], references: [id])
+  company Company? @relation(fields: [companyId], references: [id], onDelete: Restrict)
 }
 
 model Employee {
