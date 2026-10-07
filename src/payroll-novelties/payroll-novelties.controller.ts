@@ -12,6 +12,7 @@ import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { Roles } from '../common/decorators/roles.decorator';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
+import { TenantScopeGuard } from '../common/guards/tenant-scope.guard';
 import { CreatePayrollNoveltyDto } from './dto/create-payroll-novelty.dto';
 import { PayrollNoveltiesService } from './payroll-novelties.service';
 import {
@@ -29,7 +30,7 @@ import type { AuthenticatedUser } from '../common/types/authenticated-user.type'
 @ApiTags('Payroll Novelties')
 @ApiBearerAuth()
 @Controller('payroll-novelties')
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(JwtAuthGuard, TenantScopeGuard, RolesGuard)
 export class PayrollNoveltiesController {
   constructor(
     private readonly payrollNoveltiesService: PayrollNoveltiesService,

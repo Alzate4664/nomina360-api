@@ -18,6 +18,7 @@ import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { Roles } from '../common/decorators/roles.decorator';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
+import { TenantScopeGuard } from '../common/guards/tenant-scope.guard';
 import type { AuthenticatedUser } from '../common/types/authenticated-user.type';
 import {
   parseOptionalInteger,
@@ -30,7 +31,7 @@ import { PayrollService } from './payroll.service';
 @ApiTags('Payroll')
 @ApiBearerAuth()
 @Controller('payroll')
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(JwtAuthGuard, TenantScopeGuard, RolesGuard)
 export class PayrollController {
   constructor(private readonly payrollService: PayrollService) {}
 

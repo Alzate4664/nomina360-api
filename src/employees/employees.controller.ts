@@ -12,6 +12,7 @@ import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { Roles } from '../common/decorators/roles.decorator';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
+import { TenantScopeGuard } from '../common/guards/tenant-scope.guard';
 import { CreateEmployeeDto } from './dto/create-employee.dto';
 import { EmployeesService } from './employees.service';
 import { parsePositiveInteger } from '../common/utils/pagination.util';
@@ -21,7 +22,7 @@ import type { AuthenticatedUser } from '../common/types/authenticated-user.type'
 @ApiTags('Employees')
 @ApiBearerAuth()
 @Controller('employees')
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(JwtAuthGuard, TenantScopeGuard, RolesGuard)
 export class EmployeesController {
   constructor(private readonly employeesService: EmployeesService) {}
 
