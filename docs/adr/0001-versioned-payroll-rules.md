@@ -3,6 +3,11 @@
 - Status: Accepted
 - Date: 2026-09-24
 
+El modelo temporal original de este ADR se refina en
+[ADR-0002: PayrollRuleSet administration and applicability](0002-payroll-rule-set-administration-and-applicability.md),
+que separa el sobre temporal aprobado e inmutable del snapshot de su calendario
+operativo de aplicabilidad, preservando la determinación histórica por versión fijada.
+
 ## Context
 
 Nómina360 calcula resultados laborales y financieros que dependen de parámetros
