@@ -2,15 +2,19 @@ import { Module } from '@nestjs/common';
 import { AuditModule } from '../../audit/audit.module';
 import { PrismaModule } from '../../prisma/prisma.module';
 import { PayrollRuleSetPublicationService } from './payroll-rule-set-publication.service';
+import { PayrollRuleSetQueryService } from './payroll-rule-set-query.service';
+import { PlatformPayrollRuleSetsController } from './platform-payroll-rule-sets.controller';
 import { PayrollRuleSetSelectionPolicy } from './payroll-rule-set-selection.policy';
 import { PayrollRulesResolver } from './payroll-rules-resolver';
 
 @Module({
   imports: [PrismaModule, AuditModule],
+  controllers: [PlatformPayrollRuleSetsController],
   providers: [
     PayrollRulesResolver,
     PayrollRuleSetSelectionPolicy,
     PayrollRuleSetPublicationService,
+    PayrollRuleSetQueryService,
   ],
   exports: [
     PayrollRulesResolver,
