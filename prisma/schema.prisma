@@ -216,6 +216,7 @@ model PayrollRuleSet {
   jurisdictionCode String               @db.VarChar(2)
   version          Int
   schemaVersion    Int                  @default(1)
+  draftRevision    Int                  @default(1)
   status           PayrollRuleSetStatus @default(DRAFT)
 
   effectiveFrom DateTime  @db.Date
