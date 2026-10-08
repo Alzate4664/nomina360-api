@@ -1,7 +1,7 @@
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { Test } from '@nestjs/testing';
-import { PayrollRuleSetStatus, UserRole } from '@prisma/client';
+import { PayrollRuleSetStatus, Prisma, UserRole } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 import { Server } from 'node:http';
 import request from 'supertest';
@@ -101,13 +101,17 @@ function inspectMetadata(items: Metadata[]): void {
   }
 }
 
+class RollbackInventoryTransaction extends Error {}
+
 describe('GET /platform/payroll-rule-sets (real E2E, Slice C)', () => {
   let app: INestApplication | undefined;
-  let prisma: PrismaService;
+  let database: PrismaService;
+  let prisma: Prisma.TransactionClient;
   let server: Server;
   let adminToken: string;
   let forgedToken: string;
-  let owned: { drafts: string[]; users: string[]; company: string } | undefined;
+  let releaseTransaction: (() => void) | undefined;
+  let transactionDone: Promise<void> | undefined;
 
   async function inventory(query = ''): Promise<Inventory> {
     const response = await request(server)
@@ -130,9 +134,31 @@ describe('GET /platform/payroll-rule-sets (real E2E, Slice C)', () => {
 
   beforeAll(async () => {
     requireTestDatabase();
+    database = new PrismaService();
+    // Only the delegates used by this endpoint are exposed. Guards and inventory
+    // queries use the same real PostgreSQL transaction as the uncommitted fixtures.
+    const transactionProvider = {
+      get user() {
+        return prisma.user;
+      },
+      get payrollRuleSet() {
+        return prisma.payrollRuleSet;
+      },
+      $transaction(queries: Prisma.PrismaPromise<unknown>[]) {
+        // The query service's array transaction is already inside our rollback
+        // transaction; execute its real queries without opening another connection.
+        if (!Array.isArray(queries)) {
+          throw new Error('Inventory test only supports array transactions.');
+        }
+        return Promise.all(queries);
+      },
+    };
     const module = await Test.createTestingModule({
       imports: [AppModule],
-    }).compile();
+    })
+      .overrideProvider(PrismaService)
+      .useValue(transactionProvider)
+      .compile();
     app = module.createNestApplication();
     app.useGlobalPipes(
       new ValidationPipe({
@@ -143,136 +169,152 @@ describe('GET /platform/payroll-rule-sets (real E2E, Slice C)', () => {
     );
     await app.init();
     server = app.getHttpServer() as Server;
-    prisma = app.get(PrismaService);
+  });
 
-    const expected = E2E_CO_PAYROLL_RULE_SET_DATA;
-    const published = await prisma.payrollRuleSet.findUnique({
-      where: { id: expected.id },
-    });
-    if (
-      !published ||
-      published.jurisdictionCode !== expected.jurisdictionCode ||
-      published.version !== expected.version ||
-      published.schemaVersion !== expected.schemaVersion ||
-      published.status !== expected.status ||
-      published.effectiveFrom.getTime() !== expected.effectiveFrom.getTime() ||
-      published.effectiveTo?.getTime() !== expected.effectiveTo.getTime() ||
-      published.publishedAt?.getTime() !== expected.publishedAt.getTime()
-    ) {
-      throw new Error(
-        'Required shared synthetic CO PUBLISHED fixture is missing or its metadata mismatches; no repair attempted.',
-      );
-    }
-
-    const passwordHash = await bcrypt.hash('synthetic-slice-c-unused-login', 4);
+  beforeEach(async () => {
     requireTestDatabase();
-    await prisma.$transaction(async (tx) => {
-      const companyCollision = await tx.company.count({
-        where: { OR: [{ id: companyId }, { nit }, { email: companyEmail }] },
-      });
-      const userCollision = await tx.user.count({
-        where: {
-          OR: [
-            { id: { in: [adminId, ownerId] } },
-            { email: { in: [adminEmail, ownerEmail] } },
-          ],
-        },
-      });
-      const draftCollision = await tx.payrollRuleSet.count({
-        where: {
-          OR: [
-            { id: { in: drafts.map((row) => row.id) } },
-            { jurisdictionCode: { in: ['QX', 'QY'] } },
-          ],
-        },
-      });
-      if (companyCollision || userCollision || draftCollision) {
-        throw new Error(
-          'Slice C fixture collision: owned identifiers or reserved jurisdictions already exist; nothing deleted or replaced.',
-        );
-      }
-      requireTestDatabase();
-      await tx.company.create({
-        data: {
-          id: companyId,
-          name: 'Synthetic Slice C Company',
-          nit,
-          email: companyEmail,
-        },
-      });
-      requireTestDatabase();
-      await tx.user.create({
-        data: {
-          id: adminId,
-          name: 'Synthetic Slice C Admin',
-          email: adminEmail,
-          passwordHash,
-          role: UserRole.SUPER_ADMIN,
-          companyId: null,
-          isActive: true,
-        },
-      });
-      requireTestDatabase();
-      await tx.user.create({
-        data: {
-          id: ownerId,
-          name: 'Synthetic Slice C Owner',
-          email: ownerEmail,
-          passwordHash,
-          role: UserRole.OWNER,
-          companyId,
-          isActive: true,
-        },
-      });
-      for (const data of drafts) {
-        requireTestDatabase();
-        await tx.payrollRuleSet.create({ data });
-      }
+    let fixturesReady!: () => void;
+    const ready = new Promise<void>((resolve) => {
+      fixturesReady = resolve;
     });
-    owned = {
-      drafts: drafts.map((row) => row.id),
-      users: [adminId, ownerId],
-      company: companyId,
-    };
-    const jwt = app.get(JwtService);
-    adminToken = await jwt.signAsync({
-      sub: adminId,
-      email: adminEmail,
-      role: UserRole.SUPER_ADMIN,
-      companyId: null,
+    const released = new Promise<void>((resolve) => {
+      releaseTransaction = resolve;
     });
-    forgedToken = await jwt.signAsync({
-      sub: ownerId,
-      email: ownerEmail,
-      role: UserRole.SUPER_ADMIN,
-      companyId: null,
-    });
+    transactionDone = database
+      .$transaction(
+        async (tx) => {
+          prisma = tx;
+
+          const expected = E2E_CO_PAYROLL_RULE_SET_DATA;
+          const published = await prisma.payrollRuleSet.findUnique({
+            where: { id: expected.id },
+          });
+          if (
+            !published ||
+            published.jurisdictionCode !== expected.jurisdictionCode ||
+            published.version !== expected.version ||
+            published.schemaVersion !== expected.schemaVersion ||
+            published.status !== expected.status ||
+            published.effectiveFrom.getTime() !==
+              expected.effectiveFrom.getTime() ||
+            published.effectiveTo?.getTime() !==
+              expected.effectiveTo.getTime() ||
+            published.publishedAt?.getTime() !== expected.publishedAt.getTime()
+          ) {
+            throw new Error(
+              'Required shared synthetic CO PUBLISHED fixture is missing or its metadata mismatches; no repair attempted.',
+            );
+          }
+
+          const passwordHash = await bcrypt.hash(
+            'synthetic-slice-c-unused-login',
+            4,
+          );
+          requireTestDatabase();
+          const companyCollision = await tx.company.count({
+            where: {
+              OR: [{ id: companyId }, { nit }, { email: companyEmail }],
+            },
+          });
+          const userCollision = await tx.user.count({
+            where: {
+              OR: [
+                { id: { in: [adminId, ownerId] } },
+                { email: { in: [adminEmail, ownerEmail] } },
+              ],
+            },
+          });
+          const draftCollision = await tx.payrollRuleSet.count({
+            where: {
+              OR: [
+                { id: { in: drafts.map((row) => row.id) } },
+                { jurisdictionCode: { in: ['QX', 'QY'] } },
+              ],
+            },
+          });
+          if (companyCollision || userCollision || draftCollision) {
+            throw new Error(
+              'Slice C fixture collision: owned identifiers or reserved jurisdictions already exist; nothing deleted or replaced.',
+            );
+          }
+          requireTestDatabase();
+          await tx.company.create({
+            data: {
+              id: companyId,
+              name: 'Synthetic Slice C Company',
+              nit,
+              email: companyEmail,
+            },
+          });
+          requireTestDatabase();
+          await tx.user.create({
+            data: {
+              id: adminId,
+              name: 'Synthetic Slice C Admin',
+              email: adminEmail,
+              passwordHash,
+              role: UserRole.SUPER_ADMIN,
+              companyId: null,
+              isActive: true,
+            },
+          });
+          requireTestDatabase();
+          await tx.user.create({
+            data: {
+              id: ownerId,
+              name: 'Synthetic Slice C Owner',
+              email: ownerEmail,
+              passwordHash,
+              role: UserRole.OWNER,
+              companyId,
+              isActive: true,
+            },
+          });
+          for (const data of drafts) {
+            requireTestDatabase();
+            await tx.payrollRuleSet.create({ data });
+          }
+          const jwt = app!.get(JwtService);
+          adminToken = await jwt.signAsync({
+            sub: adminId,
+            email: adminEmail,
+            role: UserRole.SUPER_ADMIN,
+            companyId: null,
+          });
+          forgedToken = await jwt.signAsync({
+            sub: ownerId,
+            email: ownerEmail,
+            role: UserRole.SUPER_ADMIN,
+            companyId: null,
+          });
+          fixturesReady();
+          await released;
+          throw new RollbackInventoryTransaction();
+        },
+        { timeout: 30000 },
+      )
+      .catch((error: unknown) => {
+        if (!(error instanceof RollbackInventoryTransaction)) throw error;
+      });
+    // Surface setup/transaction failures instead of waiting forever for readiness.
+    await Promise.race([ready, transactionDone]);
   }, 30000);
+
+  afterEach(async () => {
+    try {
+      releaseTransaction?.();
+      await transactionDone;
+    } finally {
+      releaseTransaction = undefined;
+      transactionDone = undefined;
+    }
+  });
 
   afterAll(async () => {
     try {
-      if (owned) {
-        requireTestDatabase();
-        await prisma.$transaction(async (tx) => {
-          requireTestDatabase();
-          const deleted = await tx.payrollRuleSet.deleteMany({
-            where: {
-              id: { in: owned!.drafts },
-              status: PayrollRuleSetStatus.DRAFT,
-            },
-          });
-          if (deleted.count !== owned!.drafts.length)
-            throw new Error(
-              'Slice C cleanup did not delete every owned DRAFT.',
-            );
-          requireTestDatabase();
-          await tx.user.deleteMany({ where: { id: { in: owned!.users } } });
-          requireTestDatabase();
-          await tx.company.delete({ where: { id: owned!.company } });
-        });
-      }
-    } finally {
       await app?.close();
+    } finally {
+      await database?.$disconnect();
     }
   });
 

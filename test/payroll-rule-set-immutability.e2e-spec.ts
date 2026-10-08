@@ -1,11 +1,7 @@
 import { PayrollRuleSetStatus, Prisma } from '@prisma/client';
 import { PrismaService } from '../src/prisma/prisma.service';
-import { DEFAULT_PAYROLL_RULES } from '../src/payroll/rules/default-payroll-rules';
-import { serializePayrollRulesSnapshot } from '../src/payroll/rules/payroll-rules-codec';
 
 class RollbackTestTransaction extends Error {}
-
-const snapshot = serializePayrollRulesSnapshot(DEFAULT_PAYROLL_RULES);
 
 async function runAndRollback(
   prisma: PrismaService,
@@ -33,11 +29,11 @@ function createDraftData(
     id,
     jurisdictionCode: 'ZZ',
     version,
-    schemaVersion: snapshot.schemaVersion,
+    schemaVersion: 1,
     status: PayrollRuleSetStatus.DRAFT,
     effectiveFrom: new Date('2098-01-01T00:00:00.000Z'),
     effectiveTo: new Date('2099-01-01T00:00:00.000Z'),
-    rulesPayload: snapshot.rulesPayload as unknown as Prisma.InputJsonValue,
+    rulesPayload: { synthetic: true, purpose: 'database-immutability' },
   };
 }
 
@@ -53,7 +49,21 @@ describe('PayrollRuleSet database immutability (e2e)', () => {
     await prisma.$disconnect();
   });
 
-  it('allows a draft to be updated and deleted', async () => {
+  it.each([
+    { field: 'schemaVersion', data: { schemaVersion: 999 } },
+    {
+      field: 'rulesPayload',
+      data: { rulesPayload: { synthetic: true, revised: true } },
+    },
+    {
+      field: 'effective dates',
+      data: {
+        effectiveFrom: new Date('2098-06-01T00:00:00.000Z'),
+        effectiveTo: new Date('2099-06-01T00:00:00.000Z'),
+      },
+    },
+    { field: 'draftRevision', data: { draftRevision: 2 } },
+  ])('allows DRAFT $field changes', async ({ data }) => {
     await runAndRollback(prisma, async (tx) => {
       const id = 'immutability-draft';
 
@@ -65,22 +75,60 @@ describe('PayrollRuleSet database immutability (e2e)', () => {
         where: {
           id,
         },
-        data: {
-          effectiveTo: new Date('2099-06-01T00:00:00.000Z'),
-        },
+        data,
       });
 
       expect(updated.status).toBe(PayrollRuleSetStatus.DRAFT);
-
-      const deleted = await tx.payrollRuleSet.delete({
-        where: {
-          id,
-        },
+      expect(updated).toMatchObject(data);
+      expect(updated).toMatchObject({
+        id,
+        jurisdictionCode: 'ZZ',
+        version: 990001,
       });
-
-      expect(deleted.id).toBe(id);
     });
   });
+
+  it('rejects direct DRAFT deletion', async () => {
+    await expect(
+      runAndRollback(prisma, async (tx) => {
+        const id = 'immutability-draft-delete';
+        await tx.payrollRuleSet.create({ data: createDraftData(id, 990005) });
+        await tx.payrollRuleSet.delete({ where: { id } });
+      }),
+    ).rejects.toThrow(/Draft PayrollRuleSet rows cannot be deleted/i);
+  });
+
+  describe.each([false, true])(
+    'DRAFT identity changes with publication=%s',
+    (publish) => {
+      it.each([
+        { field: 'id', data: { id: 'immutability-renamed' } },
+        { field: 'jurisdictionCode', data: { jurisdictionCode: 'ZY' } },
+        { field: 'version', data: { version: 990007 } },
+      ])('rejects a direct $field update', async ({ data }) => {
+        await expect(
+          runAndRollback(prisma, async (tx) => {
+            const id = 'immutability-draft-identity';
+            await tx.payrollRuleSet.create({
+              data: createDraftData(id, 990006),
+            });
+            await tx.payrollRuleSet.update({
+              where: { id },
+              data: {
+                ...data,
+                ...(publish
+                  ? {
+                      status: PayrollRuleSetStatus.PUBLISHED,
+                      publishedAt: new Date(),
+                    }
+                  : {}),
+              },
+            });
+          }),
+        ).rejects.toThrow(/Draft PayrollRuleSet identity is immutable/i);
+      });
+    },
+  );
 
   it('allows the initial DRAFT to PUBLISHED transition', async () => {
     await runAndRollback(prisma, async (tx) => {
@@ -102,6 +150,11 @@ describe('PayrollRuleSet database immutability (e2e)', () => {
 
       expect(published.status).toBe(PayrollRuleSetStatus.PUBLISHED);
       expect(published.publishedAt).toBeInstanceOf(Date);
+      expect(published).toMatchObject({
+        id,
+        jurisdictionCode: 'ZZ',
+        version: 990002,
+      });
     });
   });
 
