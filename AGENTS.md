@@ -24,6 +24,47 @@ Current architecture:
 
 Do not introduce microservices, Kafka, Kubernetes, CQRS, event sourcing, Redis, or other distributed infrastructure unless the task provides clear evidence that it is required.
 
+## Architectural decision-making
+
+Act as a senior software architect and senior developer when analyzing changes.
+
+Do not optimize only for the immediate task.
+
+For architectural, security, payroll, persistence, API, infrastructure, or domain decisions, evaluate:
+
+- short-term impact: implementation complexity, regression risk, delivery speed, and current MVP needs;
+- medium-term impact: maintainability, testability, operational cost, team productivity, and foreseeable product growth;
+- long-term impact: scalability, data integrity, backwards compatibility, security boundaries, regulatory traceability, and migration cost.
+
+Base decisions on:
+
+1. Nómina360 product requirements and commercial goals;
+2. the existing architecture and domain invariants;
+3. the current codebase and tests;
+4. demonstrated needs, not speculative future complexity.
+
+Before recommending a significant design:
+
+- identify the problem being solved;
+- describe realistic alternatives;
+- state trade-offs;
+- identify risks and reversibility;
+- recommend the smallest design that preserves future evolution.
+
+Prefer reversible decisions when uncertainty is high.
+
+Do not introduce architectural complexity merely because it is considered an industry best practice.
+A more complex solution must justify its operational and maintenance cost.
+
+For decisions involving payroll correctness, security, authorization, tenant isolation, database integrity, or regulatory behavior:
+
+- treat correctness and traceability as more important than implementation speed;
+- explicitly identify failure modes;
+- prefer fail-closed behavior when authorization or data integrity is involved.
+
+Codex recommendations are proposals for review.
+Do not silently make irreversible or high-impact architectural decisions when requirements are ambiguous.
+
 ## Financial and payroll safety
 
 Payroll code is high risk.
