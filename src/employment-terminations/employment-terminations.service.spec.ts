@@ -1,4 +1,8 @@
-import { BadRequestException, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  NotFoundException,
+} from '@nestjs/common';
 import {
   ConceptType,
   ContractType,
@@ -11,6 +15,9 @@ import { PrismaService } from '../prisma/prisma.service';
 import { EmploymentTerminationsService } from './employment-terminations.service';
 import { TerminationPayrollCalculator } from '../payroll/calculator/termination-payroll.calculator';
 import Decimal from 'decimal.js';
+import { DEFAULT_PAYROLL_RULES } from '../payroll/rules/default-payroll-rules';
+import { PayrollRuleSetSelectionPolicy } from '../payroll/rules/payroll-rule-set-selection.policy';
+import { PayrollRulesResolutionError } from '../payroll/rules/payroll-rules-resolver';
 
 type TerminationCalculation = ReturnType<
   TerminationPayrollCalculator['calculate']
@@ -61,6 +68,21 @@ describe('EmploymentTerminationsService', () => {
     calculate: jest.fn() as jest.MockedFunction<
       TerminationPayrollCalculator['calculate']
     >,
+  };
+
+  const payrollRuleSetSelectionPolicy = {
+    selectForEmploymentTermination: jest.fn(),
+  };
+
+  const selectedTerminationRules = {
+    ...DEFAULT_PAYROLL_RULES,
+    minimumWage: new Decimal('9876543'),
+  };
+
+  const selectedTerminationRuleSet = {
+    ruleSetId: 'rules-co-termination',
+    jurisdictionCode: 'CO',
+    rules: selectedTerminationRules,
   };
 
   const companyId = 'company-1';
@@ -155,6 +177,7 @@ describe('EmploymentTerminationsService', () => {
     reason: TerminationReason.RESIGNATION,
     status,
     version: 0,
+    calculatedRuleSetId: null,
     notes: 'Retiro voluntario',
 
     unpaidSalaryStartDate: null,
@@ -176,10 +199,15 @@ describe('EmploymentTerminationsService', () => {
   beforeEach(() => {
     jest.clearAllMocks();
 
+    payrollRuleSetSelectionPolicy.selectForEmploymentTermination.mockResolvedValue(
+      selectedTerminationRuleSet,
+    );
+
     service = new EmploymentTerminationsService(
       prisma as unknown as PrismaService,
       auditService as unknown as AuditService,
       terminationPayrollCalculator as unknown as TerminationPayrollCalculator,
+      payrollRuleSetSelectionPolicy as unknown as PayrollRuleSetSelectionPolicy,
     );
   });
 
@@ -418,16 +446,26 @@ describe('EmploymentTerminationsService', () => {
       calculateDto,
     );
 
+    expect(
+      payrollRuleSetSelectionPolicy.selectForEmploymentTermination,
+    ).toHaveBeenCalledWith('CO', {
+      terminationDate: termination.terminationDate,
+      calculatedRuleSetId: null,
+    });
+
     expect(terminationPayrollCalculator.calculate).toHaveBeenCalledWith({
       baseSalary: decimalMatcher(),
       employeeStartDate: employee.startDate,
       terminationDate: termination.terminationDate,
       unpaidSalaryStartDate: new Date('2026-09-01T00:00:00.000Z'),
       pendingVacationDays: decimalMatcher(),
+      rules: selectedTerminationRules,
     });
 
     const terminationInput =
       terminationPayrollCalculator.calculate.mock.calls[0][0];
+
+    expect(terminationInput.rules).toBe(selectedTerminationRules);
 
     expect(Decimal.isDecimal(terminationInput.baseSalary)).toBe(true);
     expect(terminationInput.baseSalary.toString()).toBe('3000000');
@@ -446,6 +484,7 @@ describe('EmploymentTerminationsService', () => {
       data: containing({
         pendingVacationDays: '7.5',
         calculatedBaseSalary: '3000000',
+        calculatedRuleSetId: 'rules-co-termination',
         salaryDays: 8,
         severanceDays: 248,
         serviceBonusDays: 68,
@@ -586,6 +625,138 @@ describe('EmploymentTerminationsService', () => {
     expect(tx.employmentTerminationConcept.createMany).toHaveBeenCalled();
   });
 
+  it('should preserve the pinned rule set when recalculating an employment termination', async () => {
+    const termination = {
+      ...buildTermination(TerminationStatus.CALCULATED),
+      calculatedRuleSetId: 'rules-co-original',
+      version: 3,
+    };
+
+    const pinnedRules = {
+      ...DEFAULT_PAYROLL_RULES,
+      minimumWage: new Decimal('7654321'),
+    };
+
+    prisma.employmentTermination.findFirst
+      .mockResolvedValueOnce(termination)
+      .mockResolvedValueOnce(termination);
+
+    payrollRuleSetSelectionPolicy.selectForEmploymentTermination.mockResolvedValueOnce(
+      {
+        ruleSetId: 'rules-co-original',
+        jurisdictionCode: 'CO',
+        rules: pinnedRules,
+      },
+    );
+
+    terminationPayrollCalculator.calculate.mockReturnValue(calculation);
+
+    const tx = {
+      employmentTerminationConcept: {
+        deleteMany: jest.fn().mockResolvedValue({ count: 5 }),
+        createMany: jest.fn().mockResolvedValue({
+          count: calculation.concepts.length,
+        }),
+      },
+      employmentTermination: {
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+      },
+      auditLog: {
+        create: jest.fn(),
+      },
+    };
+
+    prisma.$transaction.mockImplementation(transactionWith(tx));
+
+    await service.calculate(companyId, userId, termination.id, calculateDto);
+
+    expect(
+      payrollRuleSetSelectionPolicy.selectForEmploymentTermination,
+    ).toHaveBeenCalledWith('CO', {
+      terminationDate: termination.terminationDate,
+      calculatedRuleSetId: 'rules-co-original',
+    });
+
+    const calculationInput =
+      terminationPayrollCalculator.calculate.mock.calls[0][0];
+
+    expect(calculationInput.rules).toBe(pinnedRules);
+
+    expect(tx.employmentTermination.updateMany).toHaveBeenCalledWith(
+      containing({
+        data: containing({
+          calculatedRuleSetId: 'rules-co-original',
+        }),
+      }),
+    );
+
+    expect(auditService.log).toHaveBeenCalledWith(
+      containing({
+        newValue: containing({
+          calculatedRuleSetId: 'rules-co-original',
+        }),
+      }),
+      tx,
+    );
+  });
+
+  it('should reject calculation when the stored termination date is not a valid business date', async () => {
+    const termination = {
+      ...buildTermination(),
+      terminationDate: new Date('2026-09-08T15:30:00.000Z'),
+    };
+
+    prisma.employmentTermination.findFirst.mockResolvedValueOnce(termination);
+
+    payrollRuleSetSelectionPolicy.selectForEmploymentTermination.mockRejectedValueOnce(
+      new PayrollRulesResolutionError(
+        'INVALID_EFFECTIVE_BUSINESS_DATE',
+        'Effective business date must be a UTC date-only value',
+      ),
+    );
+
+    await expect(
+      service.calculate(companyId, userId, termination.id, calculateDto),
+    ).rejects.toBeInstanceOf(ConflictException);
+
+    expect(
+      payrollRuleSetSelectionPolicy.selectForEmploymentTermination,
+    ).toHaveBeenCalledWith('CO', {
+      terminationDate: termination.terminationDate,
+      calculatedRuleSetId: null,
+    });
+
+    expect(terminationPayrollCalculator.calculate).not.toHaveBeenCalled();
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  it('should reject calculation when no published rule set applies to the termination date', async () => {
+    const termination = buildTermination();
+
+    prisma.employmentTermination.findFirst.mockResolvedValueOnce(termination);
+
+    payrollRuleSetSelectionPolicy.selectForEmploymentTermination.mockRejectedValueOnce(
+      new PayrollRulesResolutionError(
+        'RULE_SET_NOT_FOUND',
+        'No published payroll rule set applies to CO',
+      ),
+    );
+
+    await expect(
+      service.calculate(companyId, userId, termination.id, calculateDto),
+    ).rejects.toBeInstanceOf(ConflictException);
+
+    expect(
+      payrollRuleSetSelectionPolicy.selectForEmploymentTermination,
+    ).toHaveBeenCalledWith('CO', {
+      terminationDate: termination.terminationDate,
+      calculatedRuleSetId: null,
+    });
+
+    expect(terminationPayrollCalculator.calculate).not.toHaveBeenCalled();
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+
   it('should reject recalculation of an approved termination', async () => {
     prisma.employmentTermination.findFirst.mockResolvedValue(
       buildTermination(TerminationStatus.APPROVED),
@@ -705,7 +876,10 @@ describe('EmploymentTerminationsService', () => {
         action: 'CALCULATE_EMPLOYMENT_TERMINATION',
         entity: 'EmploymentTermination',
         entityId: termination.id,
-        newValue: containing({ pendingVacationDays: 7.5 }),
+        newValue: containing({
+          pendingVacationDays: 7.5,
+          calculatedRuleSetId: 'rules-co-termination',
+        }),
       }),
       tx,
     );

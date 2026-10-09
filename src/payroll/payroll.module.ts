@@ -29,8 +29,10 @@ import { ServiceBonusCalculator } from './calculator/concepts/service-bonus.calc
 import { ServiceBonusPayrollCalculator } from './calculator/service-bonus-payroll.calculator';
 import { TerminationVacationCalculator } from './calculator/concepts/termination-vacation.calculator';
 import { TerminationPayrollCalculator } from './calculator/termination-payroll.calculator';
+import { PayrollRulesModule } from './rules/payroll-rules.module';
 
 @Module({
+  imports: [PayrollRulesModule],
   controllers: [PayrollController],
   providers: [
     PayrollService,

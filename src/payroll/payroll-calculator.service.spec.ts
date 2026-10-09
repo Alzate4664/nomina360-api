@@ -6,7 +6,6 @@ import {
   SickLeaveOrigin,
 } from '@prisma/client';
 import Decimal from 'decimal.js';
-import { PAYROLL_RATES } from './calculator/config/payroll-rates.config';
 import { AbsenceCalculator } from './calculator/concepts/absence.calculator';
 import { BaseSalaryCalculator } from './calculator/concepts/base-salary.calculator';
 import { BonusCalculator } from './calculator/concepts/bonus.calculator';
@@ -21,6 +20,7 @@ import { SundayHolidayCalculator } from './calculator/concepts/sunday-holiday.ca
 import { TransportAllowanceCalculator } from './calculator/concepts/transport-allowance.calculator';
 import { VacationCalculator } from './calculator/concepts/vacation.calculator';
 import { PayrollCalculatorService } from './payroll-calculator.service';
+import { DEFAULT_PAYROLL_RULES } from './rules/default-payroll-rules';
 
 describe('PayrollCalculatorService', () => {
   let calculator: PayrollCalculatorService;
@@ -44,17 +44,17 @@ describe('PayrollCalculatorService', () => {
   });
 
   it('should include transport allowance in earned total but exclude it from health and pension base', () => {
-    const baseSalary = new Decimal(PAYROLL_RATES.minimumWage);
+    const baseSalary = DEFAULT_PAYROLL_RULES.minimumWage;
 
     const result = calculator.calculate({
       baseSalary,
       workedDays: 30,
       novelties: [],
+      rules: DEFAULT_PAYROLL_RULES,
     });
 
-    const expectedTransportAllowance = new Decimal(
-      PAYROLL_RATES.transportAllowance.monthlyAmount,
-    );
+    const expectedTransportAllowance =
+      DEFAULT_PAYROLL_RULES.transportAllowance.monthlyAmount;
 
     const expectedHealth = baseSalary.times('0.04');
     const expectedPension = baseSalary.times('0.04');
@@ -90,17 +90,19 @@ describe('PayrollCalculatorService', () => {
       baseSalary,
       workedDays: 30,
       novelties: [sickLeave],
+      rules: DEFAULT_PAYROLL_RULES,
     });
 
     const expectedOrdinarySalary = new Decimal('2700000');
     const expectedSickLeave = new Decimal('300000');
 
-    const expectedTransportAllowance = new Decimal(
-      PAYROLL_RATES.transportAllowance.monthlyAmount,
-    )
-      .dividedBy(30)
-      .times(27)
-      .toDecimalPlaces(0, Decimal.ROUND_HALF_UP);
+    const expectedTransportAllowance =
+      DEFAULT_PAYROLL_RULES.transportAllowance.monthlyAmount
+        .dividedBy(
+          DEFAULT_PAYROLL_RULES.transportAllowance.monthlyProrationDayBasis,
+        )
+        .times(27)
+        .toDecimalPlaces(0, Decimal.ROUND_HALF_UP);
 
     const expectedContributionBase =
       expectedOrdinarySalary.plus(expectedSickLeave);
@@ -142,7 +144,7 @@ describe('PayrollCalculatorService', () => {
   });
 
   it('should exclude vacation days from ordinary salary and transport allowance', () => {
-    const baseSalary = new Decimal(PAYROLL_RATES.minimumWage);
+    const baseSalary = DEFAULT_PAYROLL_RULES.minimumWage;
 
     const vacationNovelty = {
       type: 'VACATION',
@@ -155,6 +157,7 @@ describe('PayrollCalculatorService', () => {
       baseSalary,
       workedDays: 30,
       novelties: [vacationNovelty],
+      rules: DEFAULT_PAYROLL_RULES,
     });
 
     const dailySalary = baseSalary.dividedBy(30);
@@ -181,12 +184,13 @@ describe('PayrollCalculatorService', () => {
       baseSalaryConcept?.amount.plus(vacationConcept!.amount).eq(baseSalary),
     ).toBe(true);
 
-    const expectedTransportAllowance = new Decimal(
-      PAYROLL_RATES.transportAllowance.monthlyAmount,
-    )
-      .dividedBy(30)
-      .times(25)
-      .toDecimalPlaces(0, Decimal.ROUND_HALF_UP);
+    const expectedTransportAllowance =
+      DEFAULT_PAYROLL_RULES.transportAllowance.monthlyAmount
+        .dividedBy(
+          DEFAULT_PAYROLL_RULES.transportAllowance.monthlyProrationDayBasis,
+        )
+        .times(25)
+        .toDecimalPlaces(0, Decimal.ROUND_HALF_UP);
 
     expect(transportConcept?.amount.toString()).toBe(
       expectedTransportAllowance.toString(),
@@ -207,6 +211,7 @@ describe('PayrollCalculatorService', () => {
       baseSalary: new Decimal('3000000'),
       workedDays: 30,
       novelties: [paidLeave],
+      rules: DEFAULT_PAYROLL_RULES,
     });
 
     const baseSalaryConcept = result.concepts.find(
@@ -239,6 +244,7 @@ describe('PayrollCalculatorService', () => {
       baseSalary: new Decimal('3000000'),
       workedDays: 30,
       novelties: [unpaidLeave],
+      rules: DEFAULT_PAYROLL_RULES,
     });
 
     const baseSalaryConcept = result.concepts.find(
@@ -256,12 +262,13 @@ describe('PayrollCalculatorService', () => {
       (concept) => concept.code === 'TRANSPORT_ALLOWANCE',
     );
 
-    const expectedTransportAllowance = new Decimal(
-      PAYROLL_RATES.transportAllowance.monthlyAmount,
-    )
-      .dividedBy(30)
-      .times(27)
-      .toDecimalPlaces(0, Decimal.ROUND_HALF_UP);
+    const expectedTransportAllowance =
+      DEFAULT_PAYROLL_RULES.transportAllowance.monthlyAmount
+        .dividedBy(
+          DEFAULT_PAYROLL_RULES.transportAllowance.monthlyProrationDayBasis,
+        )
+        .times(27)
+        .toDecimalPlaces(0, Decimal.ROUND_HALF_UP);
 
     expect(transportConcept?.amount.toString()).toBe(
       expectedTransportAllowance.toString(),
@@ -284,6 +291,7 @@ describe('PayrollCalculatorService', () => {
       baseSalary: new Decimal('3000000'),
       workedDays: 30,
       novelties: [vacation],
+      rules: DEFAULT_PAYROLL_RULES,
     });
 
     const baseSalaryConcept = result.concepts.find(
@@ -296,5 +304,192 @@ describe('PayrollCalculatorService', () => {
 
     expect(baseSalaryConcept?.amount.toString()).toBe('2850000');
     expect(vacationConcept?.amount.toString()).toBe('150000');
+  });
+
+  it('should propagate the supplied employee health rate to health calculation', () => {
+    const rules = {
+      ...DEFAULT_PAYROLL_RULES,
+      contributions: {
+        ...DEFAULT_PAYROLL_RULES.contributions,
+        employeeHealthRate: new Decimal('0.05'),
+      },
+    };
+
+    const result = calculator.calculate({
+      baseSalary: new Decimal('3000000'),
+      workedDays: 30,
+      novelties: [],
+      rules,
+    });
+
+    const healthConcept = result.concepts.find(
+      (concept) => concept.code === 'HEALTH',
+    );
+
+    expect(healthConcept?.amount.toString()).toBe('150000');
+  });
+
+  it('should propagate the supplied employee pension rate to pension calculation', () => {
+    const rules = {
+      ...DEFAULT_PAYROLL_RULES,
+      contributions: {
+        ...DEFAULT_PAYROLL_RULES.contributions,
+        employeePensionRate: new Decimal('0.05'),
+      },
+    };
+
+    const result = calculator.calculate({
+      baseSalary: new Decimal('3000000'),
+      workedDays: 30,
+      novelties: [],
+      rules,
+    });
+
+    const pensionConcept = result.concepts.find(
+      (concept) => concept.code === 'PENSION',
+    );
+
+    expect(pensionConcept?.amount.toString()).toBe('150000');
+  });
+
+  it('should propagate the supplied standard monthly hours to hourly calculations', () => {
+    const overtime = {
+      type: 'OVERTIME',
+      dayType: PayrollDayType.REGULAR,
+      quantity: new Prisma.Decimal('2'),
+      amount: null,
+      description: 'Horas extra',
+    } as unknown as PayrollNovelty;
+
+    const rules = {
+      ...DEFAULT_PAYROLL_RULES,
+      standardMonthlyHours: new Decimal('200'),
+    };
+
+    const result = calculator.calculate({
+      baseSalary: new Decimal('2000000'),
+      workedDays: 30,
+      novelties: [overtime],
+      rules,
+    });
+
+    const overtimeConcept = result.concepts.find(
+      (concept) => concept.code === 'OVERTIME',
+    );
+
+    expect(overtimeConcept?.amount.toString()).toBe('25000');
+  });
+
+  it('should propagate the supplied monthly salary day basis', () => {
+    const rules = {
+      ...DEFAULT_PAYROLL_RULES,
+      salary: {
+        ...DEFAULT_PAYROLL_RULES.salary,
+        monthlyDayBasis: 20,
+      },
+    };
+
+    const result = calculator.calculate({
+      baseSalary: new Decimal('3000000'),
+      workedDays: 10,
+      novelties: [],
+      rules,
+    });
+
+    const baseSalaryConcept = result.concepts.find(
+      (concept) => concept.code === 'BASE_SALARY',
+    );
+
+    expect(baseSalaryConcept?.amount.toString()).toBe('1500000');
+  });
+
+  it('should use the supplied monthly salary day basis for absence deductions', () => {
+    const absence = {
+      type: 'ABSENCE',
+      quantity: new Prisma.Decimal('2'),
+      amount: null,
+      description: 'Ausencia',
+    } as unknown as PayrollNovelty;
+
+    const rules = {
+      ...DEFAULT_PAYROLL_RULES,
+      salary: {
+        ...DEFAULT_PAYROLL_RULES.salary,
+        monthlyDayBasis: 20,
+      },
+    };
+
+    const result = calculator.calculate({
+      baseSalary: new Decimal('3000000'),
+      workedDays: 30,
+      novelties: [absence],
+      rules,
+    });
+
+    const absenceConcept = result.concepts.find(
+      (concept) => concept.code === 'ABSENCE',
+    );
+
+    expect(absenceConcept?.amount.toString()).toBe('300000');
+  });
+
+  it('should propagate the supplied sick leave rules', () => {
+    const sickLeave = {
+      type: 'SICK_LEAVE',
+      dayType: PayrollDayType.REGULAR,
+      sickLeaveOrigin: SickLeaveOrigin.WORK_ACCIDENT,
+      sickLeaveStartDay: 1,
+      sickLeaveIbc: new Prisma.Decimal('3000000'),
+      quantity: new Prisma.Decimal('1'),
+      amount: null,
+      description: 'Incapacidad laboral',
+    } as unknown as PayrollNovelty;
+
+    const rules = {
+      ...DEFAULT_PAYROLL_RULES,
+      sickLeave: {
+        ...DEFAULT_PAYROLL_RULES.sickLeave,
+        monthlyIbcDayBasis: 20,
+      },
+    };
+
+    const result = calculator.calculate({
+      baseSalary: new Decimal('3000000'),
+      workedDays: 30,
+      novelties: [sickLeave],
+      rules,
+    });
+
+    const sickLeaveConcept = result.concepts.find(
+      (concept) => concept.code === 'SICK_LEAVE',
+    );
+
+    expect(sickLeaveConcept?.amount.toString()).toBe('150000');
+  });
+
+  it('should propagate the supplied transport allowance rules', () => {
+    const rules = {
+      ...DEFAULT_PAYROLL_RULES,
+      minimumWage: new Decimal('3000000'),
+      transportAllowance: {
+        ...DEFAULT_PAYROLL_RULES.transportAllowance,
+        monthlyAmount: new Decimal('120000'),
+        salaryLimitInMinimumWages: new Decimal('2'),
+        monthlyProrationDayBasis: 20,
+      },
+    };
+
+    const result = calculator.calculate({
+      baseSalary: new Decimal('4000000'),
+      workedDays: 10,
+      novelties: [],
+      rules,
+    });
+
+    const transportConcept = result.concepts.find(
+      (concept) => concept.code === 'TRANSPORT_ALLOWANCE',
+    );
+
+    expect(transportConcept?.amount.toString()).toBe('60000');
   });
 });

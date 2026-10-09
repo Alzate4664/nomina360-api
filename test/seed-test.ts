@@ -1,12 +1,61 @@
 import './setup-env';
 import * as bcrypt from 'bcrypt';
 import { PrismaService } from '../src/prisma/prisma.service';
+import { isDeepStrictEqual } from 'node:util';
+import { PayrollRuleSetStatus } from '@prisma/client';
+import {
+  E2E_CO_PAYROLL_RULE_SET_DATA,
+  E2E_CO_PAYROLL_RULE_SET_EFFECTIVE_FROM,
+  E2E_CO_PAYROLL_RULE_SET_EFFECTIVE_TO,
+  E2E_CO_PAYROLL_RULE_SET_ID,
+  E2E_CO_PAYROLL_RULE_SET_PAYLOAD,
+  E2E_CO_PAYROLL_RULE_SET_PUBLISHED_AT,
+  E2E_CO_PAYROLL_RULE_SET_SCHEMA_VERSION,
+  E2E_CO_PAYROLL_RULE_SET_VERSION,
+} from './fixtures/payroll-rule-set.fixture';
+
+async function ensureE2ePayrollRuleSet(prisma: PrismaService): Promise<void> {
+  const existing = await prisma.payrollRuleSet.findUnique({
+    where: {
+      id: E2E_CO_PAYROLL_RULE_SET_ID,
+    },
+  });
+
+  if (!existing) {
+    await prisma.payrollRuleSet.create({
+      data: E2E_CO_PAYROLL_RULE_SET_DATA,
+    });
+
+    return;
+  }
+
+  const matchesFixture =
+    existing.jurisdictionCode === 'CO' &&
+    existing.version === E2E_CO_PAYROLL_RULE_SET_VERSION &&
+    existing.schemaVersion === E2E_CO_PAYROLL_RULE_SET_SCHEMA_VERSION &&
+    existing.status === PayrollRuleSetStatus.PUBLISHED &&
+    existing.effectiveFrom.getTime() ===
+      E2E_CO_PAYROLL_RULE_SET_EFFECTIVE_FROM.getTime() &&
+    existing.effectiveTo?.getTime() ===
+      E2E_CO_PAYROLL_RULE_SET_EFFECTIVE_TO.getTime() &&
+    existing.publishedAt?.getTime() ===
+      E2E_CO_PAYROLL_RULE_SET_PUBLISHED_AT.getTime() &&
+    isDeepStrictEqual(existing.rulesPayload, E2E_CO_PAYROLL_RULE_SET_PAYLOAD);
+
+  if (!matchesFixture) {
+    throw new Error(
+      `El PayrollRuleSet E2E ${E2E_CO_PAYROLL_RULE_SET_ID} ya existe pero no coincide con el fixture esperado. No se modifica porque los RuleSets publicados son inmutables.`,
+    );
+  }
+}
 
 async function seedTestDatabase() {
   const prisma = new PrismaService();
 
   try {
     await prisma.$connect();
+
+    await ensureE2ePayrollRuleSet(prisma);
 
     const passwordHash = await bcrypt.hash('12345678', 10);
 

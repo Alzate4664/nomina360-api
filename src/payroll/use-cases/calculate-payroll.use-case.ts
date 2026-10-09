@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ConflictException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -21,6 +22,16 @@ import {
   PayrollCalculationResult,
   PayrollConceptAmount,
 } from '../money/payroll-money.types';
+import { DEFAULT_PAYROLL_RULES } from '../rules/default-payroll-rules';
+import {
+  hasPayrollPeriodRuleSetPolicy,
+  PayrollRuleSetSelectionError,
+  PayrollRuleSetSelectionPolicy,
+  type SelectedPayrollRuleSet,
+} from '../rules/payroll-rule-set-selection.policy';
+import { PayrollRulesResolutionError } from '../rules/payroll-rules-resolver';
+
+const INITIAL_PAYROLL_JURISDICTION_CODE = 'CO';
 
 // In-memory result collected per eligible employee before the transaction opens.
 // Concept fields use the calculator output shape { code, name, type, amount }.
@@ -45,6 +56,7 @@ export class CalculatePayrollUseCase {
     private readonly serviceBonusPayrollCalculator: ServiceBonusPayrollCalculator,
     private readonly accruedDaysCalculator: AccruedDaysCalculator,
     private readonly auditService: AuditService,
+    private readonly payrollRuleSetSelectionPolicy: PayrollRuleSetSelectionPolicy,
   ) {}
 
   async execute(
@@ -132,6 +144,61 @@ export class CalculatePayrollUseCase {
       );
     }
 
+    let selectedRuleSet: SelectedPayrollRuleSet | null = null;
+
+    if (hasPayrollPeriodRuleSetPolicy(payrollType)) {
+      try {
+        selectedRuleSet =
+          await this.payrollRuleSetSelectionPolicy.selectForPayrollPeriod(
+            INITIAL_PAYROLL_JURISDICTION_CODE,
+            {
+              payrollType,
+              startDate: period.startDate,
+              endDate: period.endDate,
+              calculatedRuleSetId: period.calculatedRuleSetId,
+            },
+          );
+      } catch (error) {
+        if (
+          error instanceof PayrollRuleSetSelectionError &&
+          error.code === 'PAYROLL_PERIOD_SPANS_MULTIPLE_RULE_SETS'
+        ) {
+          throw new ConflictException(
+            'El período de nómina cruza múltiples configuraciones de reglas vigentes y no puede calcularse como un único período',
+          );
+        }
+
+        if (
+          error instanceof PayrollRuleSetSelectionError &&
+          error.code === 'PAYROLL_PERIOD_DATES_REQUIRED'
+        ) {
+          throw new ConflictException(
+            'El período de nómina no tiene las fechas requeridas para determinar las reglas aplicables',
+          );
+        }
+
+        if (
+          error instanceof PayrollRuleSetSelectionError &&
+          error.code === 'PAYROLL_PERIOD_DATE_RANGE_INVALID'
+        ) {
+          throw new ConflictException(
+            'El período de nómina tiene un rango de fechas inválido y no puede calcularse',
+          );
+        }
+
+        if (
+          error instanceof PayrollRulesResolutionError &&
+          error.code === 'RULE_SET_NOT_FOUND'
+        ) {
+          throw new ConflictException(
+            'No existe una configuración de reglas de nómina publicada aplicable a las fechas de este período',
+          );
+        }
+
+        throw error;
+      }
+    }
+
     // Collect existing item IDs so the transaction can delete them atomically.
     const existingItems = await this.prisma.payrollItem.findMany({
       where: {
@@ -198,6 +265,7 @@ export class CalculatePayrollUseCase {
         calculation = this.severancePayrollCalculator.calculate({
           baseSalary,
           accruedDays,
+          rules: DEFAULT_PAYROLL_RULES,
         });
       } else if (payrollType === PayrollType.BONUS) {
         const semesterStartMonth = month <= 6 ? 1 : 7;
@@ -216,12 +284,14 @@ export class CalculatePayrollUseCase {
         calculation = this.serviceBonusPayrollCalculator.calculate({
           baseSalary,
           accruedDays,
+          rules: DEFAULT_PAYROLL_RULES,
         });
       } else {
         calculation = this.calculator.calculate({
           baseSalary,
           workedDays: 30,
           novelties: employeeNovelties,
+          rules: selectedRuleSet?.rules ?? DEFAULT_PAYROLL_RULES,
         });
       }
 
@@ -261,6 +331,11 @@ export class CalculatePayrollUseCase {
           version: {
             increment: 1,
           },
+          ...(selectedRuleSet
+            ? {
+                calculatedRuleSetId: selectedRuleSet.ruleSetId,
+              }
+            : {}),
         },
       });
 
@@ -351,6 +426,11 @@ export class CalculatePayrollUseCase {
             month,
             status: PayrollStatus.CALCULATED,
             version: period.version + 1,
+            ...(selectedRuleSet
+              ? {
+                  calculatedRuleSetId: selectedRuleSet.ruleSetId,
+                }
+              : {}),
           },
         },
         tx,

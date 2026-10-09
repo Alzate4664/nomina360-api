@@ -9,6 +9,7 @@ import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { Roles } from '../common/decorators/roles.decorator';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
+import { TenantScopeGuard } from '../common/guards/tenant-scope.guard';
 import { parsePositiveInteger } from '../common/utils/pagination.util';
 import { AuditService } from './audit.service';
 import type { AuthenticatedUser } from '../common/types/authenticated-user.type';
@@ -16,7 +17,7 @@ import type { AuthenticatedUser } from '../common/types/authenticated-user.type'
 @ApiTags('Audit')
 @ApiBearerAuth()
 @Controller('audit')
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(JwtAuthGuard, TenantScopeGuard, RolesGuard)
 export class AuditController {
   constructor(private readonly auditService: AuditService) {}
 

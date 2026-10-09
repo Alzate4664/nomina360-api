@@ -17,73 +17,104 @@ async function seedProductionDatabase() {
   try {
     const companyName = requiredEnv('SEED_COMPANY_NAME');
     const companyNit = requiredEnv('SEED_COMPANY_NIT');
-    const companyEmail = requiredEnv(
-      'SEED_COMPANY_EMAIL',
-    ).toLowerCase();
+    const companyEmail = requiredEnv('SEED_COMPANY_EMAIL').toLowerCase();
 
     const adminName = requiredEnv('SEED_ADMIN_NAME');
-    const adminEmail = requiredEnv(
-      'SEED_ADMIN_EMAIL',
-    ).toLowerCase();
+    const adminEmail = requiredEnv('SEED_ADMIN_EMAIL').toLowerCase();
 
     const adminPassword = requiredEnv('SEED_ADMIN_PASSWORD');
 
-    const companyPhone =
-      process.env.SEED_COMPANY_PHONE?.trim() || null;
+    const companyPhone = process.env.SEED_COMPANY_PHONE?.trim() || null;
 
-    const companyAddress =
-      process.env.SEED_COMPANY_ADDRESS?.trim() || null;
+    const companyAddress = process.env.SEED_COMPANY_ADDRESS?.trim() || null;
 
     if (adminPassword.length < 12) {
-      throw new Error(
-        'SEED_ADMIN_PASSWORD debe tener al menos 12 caracteres.',
-      );
+      throw new Error('SEED_ADMIN_PASSWORD debe tener al menos 12 caracteres.');
     }
 
     await prisma.$connect();
 
     const passwordHash = await bcrypt.hash(adminPassword, 12);
 
-    const company = await prisma.company.upsert({
-      where: {
-        nit: companyNit,
-      },
-      update: {
-        name: companyName,
-        email: companyEmail,
-        phone: companyPhone,
-        address: companyAddress,
-        status: 'ACTIVE',
-      },
-      create: {
-        name: companyName,
-        nit: companyNit,
-        email: companyEmail,
-        phone: companyPhone,
-        address: companyAddress,
-        status: 'ACTIVE',
-      },
-    });
+    const { company, owner } = await prisma.$transaction(async (tx) => {
+      const existingCompany = await tx.company.findUnique({
+        where: {
+          nit: companyNit,
+        },
+        select: {
+          id: true,
+        },
+      });
 
-    const owner = await prisma.user.upsert({
-      where: {
-        email: adminEmail,
-      },
-      update: {
-        companyId: company.id,
-        name: adminName,
-        passwordHash,
-        role: 'OWNER',
-        isActive: true,
-      },
-      create: {
-        companyId: company.id,
-        name: adminName,
-        email: adminEmail,
-        passwordHash,
-        role: 'OWNER',
-        isActive: true,
-      },
+      const existingAdmin = await tx.user.findUnique({
+        where: {
+          email: adminEmail,
+        },
+        select: {
+          id: true,
+          companyId: true,
+          role: true,
+        },
+      });
+
+      if (
+        existingAdmin &&
+        (!existingCompany ||
+          existingAdmin.companyId !== existingCompany.id ||
+          existingAdmin.role !== 'OWNER')
+      ) {
+        throw new Error(
+          'SEED_ADMIN_EMAIL ya pertenece a un usuario con otro ámbito, empresa o rol. El seed no modificará su identidad.',
+        );
+      }
+
+      const company = await tx.company.upsert({
+        where: {
+          nit: companyNit,
+        },
+        update: {
+          name: companyName,
+          email: companyEmail,
+          phone: companyPhone,
+          address: companyAddress,
+          status: 'ACTIVE',
+        },
+        create: {
+          name: companyName,
+          nit: companyNit,
+          email: companyEmail,
+          phone: companyPhone,
+          address: companyAddress,
+          status: 'ACTIVE',
+        },
+      });
+
+      const owner = existingAdmin
+        ? await tx.user.update({
+            where: {
+              id: existingAdmin.id,
+            },
+            data: {
+              name: adminName,
+              passwordHash,
+              isActive: true,
+            },
+          })
+        : await tx.user.create({
+            data: {
+              companyId: company.id,
+              name: adminName,
+              email: adminEmail,
+              passwordHash,
+              role: 'OWNER',
+              isActive: true,
+            },
+          });
+
+      return {
+        company,
+        owner,
+      };
     });
 
     console.log('Producción inicializada correctamente.');

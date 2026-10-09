@@ -4,6 +4,7 @@ import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { Roles } from '../common/decorators/roles.decorator';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
+import { TenantScopeGuard } from '../common/guards/tenant-scope.guard';
 import { ReportsService } from './reports.service';
 import { ApiBearerAuth, ApiQuery, ApiTags } from '@nestjs/swagger';
 import { PayrollType } from '@prisma/client';
@@ -12,7 +13,7 @@ import type { AuthenticatedUser } from '../common/types/authenticated-user.type'
 @ApiTags('reports')
 @ApiBearerAuth()
 @Controller('reports')
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(JwtAuthGuard, TenantScopeGuard, RolesGuard)
 export class ReportsController {
   constructor(private readonly reportsService: ReportsService) {}
 

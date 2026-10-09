@@ -1,12 +1,17 @@
 import { Injectable } from '@nestjs/common';
 import { ConceptType } from '@prisma/client';
 import Decimal from 'decimal.js';
-import { PAYROLL_RATES } from '../config/payroll-rates.config';
 import { PayrollConceptAmount } from '../../money/payroll-money.types';
+
+interface SeveranceCalculationRules {
+  readonly daysPerYear: number;
+  readonly interestAnnualRate: Decimal;
+}
 
 interface SeveranceCalculationInput {
   severanceBase: Decimal;
   accruedDays: number;
+  rules: SeveranceCalculationRules;
 }
 
 @Injectable()
@@ -23,12 +28,12 @@ export class SeveranceCalculator {
 
     const severance = input.severanceBase
       .times(input.accruedDays)
-      .dividedBy(PAYROLL_RATES.severance.daysPerYear);
+      .dividedBy(input.rules.daysPerYear);
 
     const interest = severance
-      .times(PAYROLL_RATES.severance.interestAnnualRate)
+      .times(input.rules.interestAnnualRate)
       .times(input.accruedDays)
-      .dividedBy(PAYROLL_RATES.severance.daysPerYear);
+      .dividedBy(input.rules.daysPerYear);
 
     const concepts: PayrollConceptAmount[] = [
       {

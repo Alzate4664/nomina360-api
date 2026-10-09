@@ -1,6 +1,9 @@
 import { ConceptType } from '@prisma/client';
 import Decimal from 'decimal.js';
 import { ServiceBonusCalculator } from './service-bonus.calculator';
+import { DEFAULT_PAYROLL_RULES } from '../../rules/default-payroll-rules';
+
+const defaultDaysPerYear = DEFAULT_PAYROLL_RULES.serviceBonus.daysPerYear;
 
 describe('ServiceBonusCalculator', () => {
   let calculator: ServiceBonusCalculator;
@@ -10,7 +13,11 @@ describe('ServiceBonusCalculator', () => {
   });
 
   it('should calculate service bonus for 180 accrued days', () => {
-    const result = calculator.calculate(new Decimal('3000000'), 180);
+    const result = calculator.calculate(
+      new Decimal('3000000'),
+      180,
+      defaultDaysPerYear,
+    );
 
     expect(Decimal.isDecimal(result.earned)).toBe(true);
     expect(result.earned.toString()).toBe('1500000');
@@ -25,7 +32,11 @@ describe('ServiceBonusCalculator', () => {
   });
 
   it('should calculate proportional service bonus exactly', () => {
-    const result = calculator.calculate(new Decimal('3000000'), 90);
+    const result = calculator.calculate(
+      new Decimal('3000000'),
+      90,
+      defaultDaysPerYear,
+    );
 
     expect(Decimal.isDecimal(result.earned)).toBe(true);
     expect(result.earned.toString()).toBe('750000');
@@ -35,6 +46,7 @@ describe('ServiceBonusCalculator', () => {
     const result = calculator.calculate(
       new Decimal('1750905'),
       180,
+      defaultDaysPerYear,
       new Decimal('249095'),
     );
 
@@ -43,7 +55,11 @@ describe('ServiceBonusCalculator', () => {
   });
 
   it('should avoid IEEE-754 noise in proportional calculations', () => {
-    const result = calculator.calculate(new Decimal('700362'), 1);
+    const result = calculator.calculate(
+      new Decimal('700362'),
+      1,
+      defaultDaysPerYear,
+    );
 
     expect(Decimal.isDecimal(result.earned)).toBe(true);
     expect(result.earned.toString()).toBe('1945.45');
@@ -51,7 +67,11 @@ describe('ServiceBonusCalculator', () => {
   });
 
   it('should return Decimal zero for zero accrued days', () => {
-    const result = calculator.calculate(new Decimal('3000000'), 0);
+    const result = calculator.calculate(
+      new Decimal('3000000'),
+      0,
+      defaultDaysPerYear,
+    );
 
     expect(Decimal.isDecimal(result.earned)).toBe(true);
     expect(result.earned.toString()).toBe('0');
@@ -59,10 +79,20 @@ describe('ServiceBonusCalculator', () => {
   });
 
   it('should return Decimal zero for negative accrued days', () => {
-    const result = calculator.calculate(new Decimal('3000000'), -10);
+    const result = calculator.calculate(
+      new Decimal('3000000'),
+      -10,
+      defaultDaysPerYear,
+    );
 
     expect(Decimal.isDecimal(result.earned)).toBe(true);
     expect(result.earned.toString()).toBe('0');
     expect(result.concepts).toEqual([]);
+  });
+
+  it('should use the supplied service bonus days per year', () => {
+    const result = calculator.calculate(new Decimal('3000000'), 90, 180);
+
+    expect(result.earned.toString()).toBe('1500000');
   });
 });

@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ConflictException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -10,6 +11,13 @@ import { EmployeeStatus, TerminationStatus } from '@prisma/client';
 import { TerminationPayrollCalculator } from '../payroll/calculator/termination-payroll.calculator';
 import { CalculateEmploymentTerminationDto } from './dto/calculate-employment-termination.dto';
 import { toDecimal } from '../payroll/money/decimal';
+import {
+  PayrollRuleSetSelectionPolicy,
+  type SelectedPayrollRuleSet,
+} from '../payroll/rules/payroll-rule-set-selection.policy';
+import { PayrollRulesResolutionError } from '../payroll/rules/payroll-rules-resolver';
+
+const INITIAL_PAYROLL_JURISDICTION_CODE = 'CO';
 
 @Injectable()
 export class EmploymentTerminationsService {
@@ -17,6 +25,7 @@ export class EmploymentTerminationsService {
     private readonly prisma: PrismaService,
     private readonly auditService: AuditService,
     private readonly terminationPayrollCalculator: TerminationPayrollCalculator,
+    private readonly payrollRuleSetSelectionPolicy: PayrollRuleSetSelectionPolicy,
   ) {}
 
   async create(
@@ -141,12 +150,46 @@ export class EmploymentTerminationsService {
     const pendingVacationDays = toDecimal(pendingVacationDaysInput);
     const baseSalary = toDecimal(termination.employee.baseSalary);
 
+    let selectedRuleSet: SelectedPayrollRuleSet;
+
+    try {
+      selectedRuleSet =
+        await this.payrollRuleSetSelectionPolicy.selectForEmploymentTermination(
+          INITIAL_PAYROLL_JURISDICTION_CODE,
+          {
+            terminationDate: termination.terminationDate,
+            calculatedRuleSetId: termination.calculatedRuleSetId,
+          },
+        );
+    } catch (error) {
+      if (
+        error instanceof PayrollRulesResolutionError &&
+        error.code === 'INVALID_EFFECTIVE_BUSINESS_DATE'
+      ) {
+        throw new ConflictException(
+          'La fecha de terminación almacenada no es una fecha de negocio válida para determinar las reglas aplicables',
+        );
+      }
+
+      if (
+        error instanceof PayrollRulesResolutionError &&
+        error.code === 'RULE_SET_NOT_FOUND'
+      ) {
+        throw new ConflictException(
+          'No existe una configuración de reglas de nómina publicada aplicable a la fecha de terminación',
+        );
+      }
+
+      throw error;
+    }
+
     const calculation = this.terminationPayrollCalculator.calculate({
       baseSalary,
       employeeStartDate: termination.employee.startDate,
       terminationDate: termination.terminationDate,
       unpaidSalaryStartDate,
       pendingVacationDays,
+      rules: selectedRuleSet.rules,
     });
 
     const calculatedAt = new Date();
@@ -165,6 +208,7 @@ export class EmploymentTerminationsService {
           unpaidSalaryStartDate,
           pendingVacationDays: pendingVacationDays.toString(),
           calculatedBaseSalary: baseSalary.toString(),
+          calculatedRuleSetId: selectedRuleSet.ruleSetId,
           salaryDays: calculation.salaryDays,
           severanceDays: calculation.severanceDays,
           serviceBonusDays: calculation.serviceBonusDays,
@@ -211,6 +255,7 @@ export class EmploymentTerminationsService {
           oldValue: {
             status: termination.status,
             version: termination.version,
+            calculatedRuleSetId: termination.calculatedRuleSetId ?? null,
             calculatedBaseSalary:
               termination.calculatedBaseSalary?.toString() ?? null,
             earnedTotal: termination.earnedTotal?.toString() ?? null,
@@ -219,6 +264,7 @@ export class EmploymentTerminationsService {
           newValue: {
             status: TerminationStatus.CALCULATED,
             version: termination.version + 1,
+            calculatedRuleSetId: selectedRuleSet.ruleSetId,
             calculatedBaseSalary: baseSalary.toString(),
             salaryDays: calculation.salaryDays,
             severanceDays: calculation.severanceDays,

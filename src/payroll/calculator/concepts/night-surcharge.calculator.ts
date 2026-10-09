@@ -3,12 +3,20 @@ import { ConceptType, PayrollNovelty } from '@prisma/client';
 import Decimal from 'decimal.js';
 import { toDecimal } from '../../money/decimal';
 import { PayrollConceptAmount } from '../../money/payroll-money.types';
-import { PAYROLL_RATES } from '../config/payroll-rates.config';
+
+interface NightSurchargeCalculationRules {
+  standardMonthlyHours: Decimal;
+  nighttimeRate: Decimal;
+}
 
 @Injectable()
 export class NightSurchargeCalculator {
-  calculate(baseSalary: Decimal, novelties: PayrollNovelty[]) {
-    const hourlyRate = baseSalary.dividedBy(PAYROLL_RATES.standardMonthlyHours);
+  calculate(
+    baseSalary: Decimal,
+    novelties: PayrollNovelty[],
+    rules: NightSurchargeCalculationRules,
+  ) {
+    const hourlyRate = baseSalary.dividedBy(rules.standardMonthlyHours);
 
     let earned = new Decimal(0);
 
@@ -21,9 +29,7 @@ export class NightSurchargeCalculator {
 
       const hours = toDecimal(novelty.quantity ?? '0');
 
-      const amount = hourlyRate
-        .times(hours)
-        .times(toDecimal(PAYROLL_RATES.surcharges.nighttimeRate));
+      const amount = hourlyRate.times(hours).times(rules.nighttimeRate);
 
       earned = earned.plus(amount);
 

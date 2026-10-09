@@ -3,12 +3,20 @@ import { ConceptType, PayrollNovelty } from '@prisma/client';
 import Decimal from 'decimal.js';
 import { toDecimal } from '../../money/decimal';
 import { PayrollConceptAmount } from '../../money/payroll-money.types';
-import { PAYROLL_RATES } from '../config/payroll-rates.config';
+
+interface SundayHolidayCalculationRules {
+  standardMonthlyHours: Decimal;
+  sundayHolidayRate: Decimal;
+}
 
 @Injectable()
 export class SundayHolidayCalculator {
-  calculate(baseSalary: Decimal, novelties: PayrollNovelty[]) {
-    const hourlyRate = baseSalary.dividedBy(PAYROLL_RATES.standardMonthlyHours);
+  calculate(
+    baseSalary: Decimal,
+    novelties: PayrollNovelty[],
+    rules: SundayHolidayCalculationRules,
+  ) {
+    const hourlyRate = baseSalary.dividedBy(rules.standardMonthlyHours);
 
     let earned = new Decimal(0);
 
@@ -24,9 +32,7 @@ export class SundayHolidayCalculator {
 
       const hours = toDecimal(novelty.quantity ?? '0');
 
-      const amount = hourlyRate
-        .times(hours)
-        .times(toDecimal(PAYROLL_RATES.surcharges.sundayHolidayRate));
+      const amount = hourlyRate.times(hours).times(rules.sundayHolidayRate);
 
       earned = earned.plus(amount);
 

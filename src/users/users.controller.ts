@@ -13,6 +13,7 @@ import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { Roles } from '../common/decorators/roles.decorator';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
+import { TenantScopeGuard } from '../common/guards/tenant-scope.guard';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { UsersService } from './users.service';
@@ -23,7 +24,7 @@ import type { AuthenticatedUser } from '../common/types/authenticated-user.type'
 @ApiTags('users')
 @ApiBearerAuth()
 @Controller('users')
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(JwtAuthGuard, TenantScopeGuard, RolesGuard)
 export class UsersController {
   constructor(private readonly usersService: UsersService) {}
 

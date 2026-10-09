@@ -3,10 +3,12 @@ import Decimal from 'decimal.js';
 import { SeveranceCalculator } from './concepts/severance.calculator';
 import { TransportAllowanceCalculator } from './concepts/transport-allowance.calculator';
 import { PayrollCalculationResult } from '../money/payroll-money.types';
+import { PayrollRules } from '../rules/payroll-rules';
 
 interface SeverancePayrollInput {
   baseSalary: Decimal;
   accruedDays: number;
+  rules: PayrollRules;
 }
 
 type SeverancePayrollResult = PayrollCalculationResult & {
@@ -24,7 +26,11 @@ export class SeverancePayrollCalculator {
     const transportAllowanceResult =
       this.transportAllowanceCalculator.calculate(
         input.baseSalary,
-        new Decimal(30),
+        new Decimal(input.rules.transportAllowance.monthlyProrationDayBasis),
+        {
+          minimumWage: input.rules.minimumWage,
+          transportAllowance: input.rules.transportAllowance,
+        },
       );
 
     const severanceBase = input.baseSalary.plus(
@@ -34,6 +40,7 @@ export class SeverancePayrollCalculator {
     const severanceResult = this.severanceCalculator.calculate({
       severanceBase,
       accruedDays: input.accruedDays,
+      rules: input.rules.severance,
     });
 
     return {

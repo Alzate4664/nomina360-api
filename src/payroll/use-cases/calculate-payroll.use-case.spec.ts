@@ -1,5 +1,9 @@
-import { PayrollStatus, PayrollType } from '@prisma/client';
-import { BadRequestException, NotFoundException } from '@nestjs/common';
+import { PayrollStatus, PayrollType, Prisma } from '@prisma/client';
+import {
+  BadRequestException,
+  ConflictException,
+  NotFoundException,
+} from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { AuditService } from '../../audit/audit.service';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -9,6 +13,13 @@ import { PayrollCalculatorService } from '../payroll-calculator.service';
 import { CalculatePayrollUseCase } from './calculate-payroll.use-case';
 import { ServiceBonusPayrollCalculator } from '../calculator/service-bonus-payroll.calculator';
 import Decimal from 'decimal.js';
+import { DEFAULT_PAYROLL_RULES } from '../rules/default-payroll-rules';
+import {
+  PayrollRuleSetSelectionError,
+  PayrollRuleSetSelectionPolicy,
+} from '../rules/payroll-rule-set-selection.policy';
+import type { PayrollRules } from '../rules/payroll-rules';
+import { PayrollRulesResolutionError } from '../rules/payroll-rules-resolver';
 
 describe('CalculatePayrollUseCase', () => {
   let useCase: CalculatePayrollUseCase;
@@ -40,6 +51,21 @@ describe('CalculatePayrollUseCase', () => {
     $transaction: jest.fn(),
   };
 
+  const selectForPayrollPeriodMock: jest.MockedFunction<
+    PayrollRuleSetSelectionPolicy['selectForPayrollPeriod']
+  > = jest.fn();
+
+  const payrollRuleSetSelectionPolicyMock = {
+    selectForPayrollPeriod: selectForPayrollPeriodMock,
+  };
+
+  type PayrollPeriodUpdateManyFn = (
+    args: Prisma.PayrollPeriodUpdateManyArgs,
+  ) => Promise<Prisma.BatchPayload>;
+
+  const payrollPeriodUpdateManyMock: jest.MockedFunction<PayrollPeriodUpdateManyFn> =
+    jest.fn();
+
   // Shared tx mock — represents the Prisma.TransactionClient passed inside $transaction.
   // auditLog.create is included for TransactionClient shape fidelity;
   // it is not directly asserted in this spec because AuditService.log is mocked.
@@ -55,7 +81,7 @@ describe('CalculatePayrollUseCase', () => {
       createManyAndReturn: jest.fn(),
     },
     payrollPeriod: {
-      updateMany: jest.fn(),
+      updateMany: payrollPeriodUpdateManyMock,
     },
     auditLog: {
       create: jest.fn(),
@@ -76,8 +102,10 @@ describe('CalculatePayrollUseCase', () => {
     calculate: jest.fn(),
   };
 
+  const auditLogMock: jest.MockedFunction<AuditService['log']> = jest.fn();
+
   const auditServiceMock = {
-    log: jest.fn(),
+    log: auditLogMock,
   };
 
   const serviceBonusCalculateMock: jest.MockedFunction<
@@ -89,6 +117,12 @@ describe('CalculatePayrollUseCase', () => {
 
   beforeEach(async () => {
     jest.clearAllMocks();
+
+    selectForPayrollPeriodMock.mockResolvedValue({
+      ruleSetId: 'rules-co-default',
+      jurisdictionCode: 'CO',
+      rules: DEFAULT_PAYROLL_RULES,
+    });
 
     // Re-establish tx default implementations after clearAllMocks().
     tx.payrollConceptDetail.deleteMany.mockResolvedValue({ count: 0 });
@@ -129,6 +163,10 @@ describe('CalculatePayrollUseCase', () => {
           provide: AuditService,
           useValue: auditServiceMock,
         },
+        {
+          provide: PayrollRuleSetSelectionPolicy,
+          useValue: payrollRuleSetSelectionPolicyMock,
+        },
       ],
     }).compile();
 
@@ -140,6 +178,10 @@ describe('CalculatePayrollUseCase', () => {
       year: 2026,
       month: 12,
       payrollType: PayrollType.MONTHLY,
+      startDate: new Date('2026-12-01T00:00:00.000Z'),
+      endDate: new Date('2026-12-31T00:00:00.000Z'),
+      paymentDate: new Date('2027-01-05T00:00:00.000Z'),
+      calculatedRuleSetId: null,
       status: PayrollStatus.DRAFT,
       version: 0,
     });
@@ -183,8 +225,6 @@ describe('CalculatePayrollUseCase', () => {
     prismaMock.payrollConceptDetail.create.mockResolvedValue({
       id: 'concept-1',
     });
-
-    auditServiceMock.log.mockResolvedValue(undefined);
 
     tx.payrollConceptDetail.createMany.mockResolvedValue({ count: 1 });
 
@@ -270,6 +310,17 @@ describe('CalculatePayrollUseCase', () => {
   });
 
   it('should use regular payroll calculator for monthly payroll', async () => {
+    const selectedRules: PayrollRules = {
+      ...DEFAULT_PAYROLL_RULES,
+      minimumWage: new Decimal('9876543'),
+    };
+
+    selectForPayrollPeriodMock.mockResolvedValueOnce({
+      ruleSetId: 'rules-co-selected',
+      jurisdictionCode: 'CO',
+      rules: selectedRules,
+    });
+
     payrollCalculatorMock.calculate.mockReturnValue({
       earnedTotal: new Decimal('3000000'),
       deductionsTotal: new Decimal('240000'),
@@ -286,6 +337,15 @@ describe('CalculatePayrollUseCase', () => {
 
     await useCase.execute('company-1', 'user-1', 'period-1');
 
+    expect(selectForPayrollPeriodMock).toHaveBeenCalledTimes(1);
+
+    expect(selectForPayrollPeriodMock).toHaveBeenCalledWith('CO', {
+      payrollType: PayrollType.MONTHLY,
+      startDate: new Date('2026-12-01T00:00:00.000Z'),
+      endDate: new Date('2026-12-31T00:00:00.000Z'),
+      calculatedRuleSetId: null,
+    });
+
     expect(prismaMock.payrollPeriod.findFirst).toHaveBeenCalledWith({
       where: {
         id: 'period-1',
@@ -298,6 +358,21 @@ describe('CalculatePayrollUseCase', () => {
     expect(payrollCalculateMock).toHaveBeenCalledTimes(1);
     const [regularPayrollInput] = payrollCalculateMock.mock.calls[0];
 
+    expect(regularPayrollInput.rules).toBe(selectedRules);
+
+    const selectedTransitionArgs =
+      payrollPeriodUpdateManyMock.mock.calls[0]?.[0];
+
+    expect(selectedTransitionArgs?.data.calculatedRuleSetId).toBe(
+      'rules-co-selected',
+    );
+
+    const auditData = auditLogMock.mock.calls[0]?.[0];
+
+    expect(auditData?.newValue).toMatchObject({
+      calculatedRuleSetId: 'rules-co-selected',
+    });
+
     expect(Decimal.isDecimal(regularPayrollInput.baseSalary)).toBe(true);
     expect(regularPayrollInput.baseSalary.toString()).toBe('3000000');
     expect(regularPayrollInput.workedDays).toBe(30);
@@ -306,6 +381,155 @@ describe('CalculatePayrollUseCase', () => {
     expect(prismaMock.$transaction).toHaveBeenCalledTimes(1);
     expect(severancePayrollCalculatorMock.calculate).not.toHaveBeenCalled();
   });
+
+  it('should preserve the pinned rule set when recalculating a periodic payroll', async () => {
+    const startDate = new Date('2026-12-01T00:00:00.000Z');
+    const endDate = new Date('2026-12-31T00:00:00.000Z');
+
+    prismaMock.payrollPeriod.findFirst.mockResolvedValueOnce({
+      id: 'period-1',
+      companyId: 'company-1',
+      year: 2026,
+      month: 12,
+      payrollType: PayrollType.MONTHLY,
+      startDate,
+      endDate,
+      paymentDate: new Date('2027-01-05T00:00:00.000Z'),
+      calculatedRuleSetId: 'rules-co-original',
+      status: PayrollStatus.CALCULATED,
+      version: 3,
+    });
+
+    selectForPayrollPeriodMock.mockResolvedValueOnce({
+      ruleSetId: 'rules-co-original',
+      jurisdictionCode: 'CO',
+      rules: DEFAULT_PAYROLL_RULES,
+    });
+
+    payrollCalculateMock.mockReturnValue({
+      earnedTotal: new Decimal('3000000'),
+      deductionsTotal: new Decimal('240000'),
+      netPay: new Decimal('2760000'),
+      concepts: [],
+    });
+
+    await useCase.execute('company-1', 'user-1', 'period-1');
+
+    expect(selectForPayrollPeriodMock).toHaveBeenCalledWith('CO', {
+      payrollType: PayrollType.MONTHLY,
+      startDate,
+      endDate,
+      calculatedRuleSetId: 'rules-co-original',
+    });
+
+    const pinnedTransitionArgs = payrollPeriodUpdateManyMock.mock.calls[0]?.[0];
+
+    expect(pinnedTransitionArgs?.data?.calculatedRuleSetId).toBe(
+      'rules-co-original',
+    );
+  });
+
+  it('should translate a payroll period spanning multiple rule sets to ConflictException', async () => {
+    selectForPayrollPeriodMock.mockRejectedValueOnce(
+      new PayrollRuleSetSelectionError(
+        'PAYROLL_PERIOD_SPANS_MULTIPLE_RULE_SETS',
+        'Payroll period spans multiple payroll rule sets',
+      ),
+    );
+
+    await expect(
+      useCase.execute('company-1', 'user-1', 'period-1'),
+    ).rejects.toBeInstanceOf(ConflictException);
+
+    expect(prismaMock.payrollItem.findMany).not.toHaveBeenCalled();
+    expect(prismaMock.$transaction).not.toHaveBeenCalled();
+  });
+
+  it('should translate a missing published rule set to ConflictException', async () => {
+    selectForPayrollPeriodMock.mockRejectedValueOnce(
+      new PayrollRulesResolutionError(
+        'RULE_SET_NOT_FOUND',
+        'No published payroll rule set applies to CO',
+      ),
+    );
+
+    await expect(
+      useCase.execute('company-1', 'user-1', 'period-1'),
+    ).rejects.toBeInstanceOf(ConflictException);
+
+    expect(prismaMock.payrollItem.findMany).not.toHaveBeenCalled();
+    expect(prismaMock.$transaction).not.toHaveBeenCalled();
+  });
+
+  it('should translate missing periodic payroll dates to ConflictException', async () => {
+    selectForPayrollPeriodMock.mockRejectedValueOnce(
+      new PayrollRuleSetSelectionError(
+        'PAYROLL_PERIOD_DATES_REQUIRED',
+        'Payroll type MONTHLY requires startDate and endDate to select payroll rules',
+      ),
+    );
+
+    await expect(
+      useCase.execute('company-1', 'user-1', 'period-1'),
+    ).rejects.toBeInstanceOf(ConflictException);
+
+    expect(prismaMock.payrollItem.findMany).not.toHaveBeenCalled();
+    expect(prismaMock.$transaction).not.toHaveBeenCalled();
+  });
+
+  it('should translate an invalid periodic payroll date range to ConflictException', async () => {
+    selectForPayrollPeriodMock.mockRejectedValueOnce(
+      new PayrollRuleSetSelectionError(
+        'PAYROLL_PERIOD_DATE_RANGE_INVALID',
+        'Payroll period startDate cannot be after endDate',
+      ),
+    );
+
+    await expect(
+      useCase.execute('company-1', 'user-1', 'period-1'),
+    ).rejects.toBeInstanceOf(ConflictException);
+
+    expect(prismaMock.payrollItem.findMany).not.toHaveBeenCalled();
+    expect(prismaMock.$transaction).not.toHaveBeenCalled();
+  });
+
+  it.each([PayrollType.EXTRAORDINARY, PayrollType.TERMINATION])(
+    'should keep %s outside versioned rule set selection for now',
+    async (payrollType) => {
+      prismaMock.payrollPeriod.findFirst.mockResolvedValueOnce({
+        id: 'period-1',
+        companyId: 'company-1',
+        year: 2026,
+        month: 12,
+        payrollType,
+        startDate: null,
+        endDate: null,
+        paymentDate: null,
+        calculatedRuleSetId: null,
+        status: PayrollStatus.DRAFT,
+        version: 0,
+      });
+
+      payrollCalculateMock.mockReturnValue({
+        earnedTotal: new Decimal('3000000'),
+        deductionsTotal: new Decimal('240000'),
+        netPay: new Decimal('2760000'),
+        concepts: [],
+      });
+
+      await useCase.execute('company-1', 'user-1', 'period-1');
+
+      expect(selectForPayrollPeriodMock).not.toHaveBeenCalled();
+
+      const [regularPayrollInput] = payrollCalculateMock.mock.calls[0];
+
+      expect(regularPayrollInput.rules).toBe(DEFAULT_PAYROLL_RULES);
+
+      const transitionArgs = payrollPeriodUpdateManyMock.mock.calls[0]?.[0];
+
+      expect(transitionArgs?.data).not.toHaveProperty('calculatedRuleSetId');
+    },
+  );
 
   it('should batch-load payroll novelties once and group them by employee', async () => {
     prismaMock.employee.findMany.mockResolvedValue([
@@ -524,9 +748,13 @@ describe('CalculatePayrollUseCase', () => {
     expect(severanceInput.baseSalary.toString()).toBe('3000000');
     expect(severanceInput.accruedDays).toBe(360);
 
+    expect(severanceInput.rules).toBe(DEFAULT_PAYROLL_RULES);
+
     expect(prismaMock.$transaction).toHaveBeenCalledTimes(1);
     expect(payrollCalculatorMock.calculate).not.toHaveBeenCalled();
     expect(prismaMock.payrollNovelty.findMany).not.toHaveBeenCalled();
+
+    expect(selectForPayrollPeriodMock).not.toHaveBeenCalled();
   });
 
   it('should skip employee when severance accrued days are zero', async () => {
@@ -625,9 +853,13 @@ describe('CalculatePayrollUseCase', () => {
     expect(serviceBonusInput.baseSalary.toString()).toBe('3000000');
     expect(serviceBonusInput.accruedDays).toBe(180);
 
+    expect(serviceBonusInput.rules).toBe(DEFAULT_PAYROLL_RULES);
+
     expect(payrollCalculatorMock.calculate).not.toHaveBeenCalled();
     expect(severancePayrollCalculatorMock.calculate).not.toHaveBeenCalled();
     expect(prismaMock.payrollNovelty.findMany).not.toHaveBeenCalled();
+
+    expect(selectForPayrollPeriodMock).not.toHaveBeenCalled();
   });
 
   it('should use service bonus payroll calculator for second semester bonus', async () => {
@@ -730,6 +962,10 @@ describe('CalculatePayrollUseCase', () => {
         year: 2026,
         month: 12,
         payrollType: PayrollType.MONTHLY,
+        startDate: new Date('2026-12-01T00:00:00.000Z'),
+        endDate: new Date('2026-12-31T00:00:00.000Z'),
+        paymentDate: new Date('2027-01-05T00:00:00.000Z'),
+        calculatedRuleSetId: 'rules-co-default',
         status: PayrollStatus.CALCULATED,
         version: 3,
       };
@@ -767,6 +1003,7 @@ describe('CalculatePayrollUseCase', () => {
           version: {
             increment: 1,
           },
+          calculatedRuleSetId: 'rules-co-default',
         },
       });
 
@@ -789,10 +1026,15 @@ describe('CalculatePayrollUseCase', () => {
       );
 
       expect(auditServiceMock.log).toHaveBeenCalledTimes(1);
-      const [auditData, auditClient] = auditServiceMock.log.mock.calls[0] as [
-        Parameters<AuditService['log']>[0],
-        typeof tx,
-      ];
+      const auditCall = auditLogMock.mock.calls[0];
+
+      expect(auditCall).toBeDefined();
+
+      if (!auditCall) {
+        throw new Error('Expected AuditService.log to be called');
+      }
+
+      const [auditData, auditClient] = auditCall;
 
       expect(auditData).toMatchObject({
         companyId: 'company-1',

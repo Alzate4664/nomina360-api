@@ -6,6 +6,7 @@ import { TerminationVacationCalculator } from './concepts/termination-vacation.c
 import { ServiceBonusPayrollCalculator } from './service-bonus-payroll.calculator';
 import { SeverancePayrollCalculator } from './severance-payroll.calculator';
 import { PayrollConceptAmount } from '../money/payroll-money.types';
+import { PayrollRules } from '../rules/payroll-rules';
 
 interface TerminationPayrollInput {
   baseSalary: Decimal;
@@ -13,6 +14,7 @@ interface TerminationPayrollInput {
   terminationDate: Date;
   unpaidSalaryStartDate: Date;
   pendingVacationDays: Decimal;
+  rules: PayrollRules;
 }
 
 @Injectable()
@@ -34,6 +36,7 @@ export class TerminationPayrollCalculator {
     const salaryResult = this.baseSalaryCalculator.calculate(
       input.baseSalary,
       new Decimal(salaryDays),
+      input.rules.salary.monthlyDayBasis,
     );
 
     const terminationYear = input.terminationDate.getUTCFullYear();
@@ -49,6 +52,7 @@ export class TerminationPayrollCalculator {
     const severanceResult = this.severancePayrollCalculator.calculate({
       baseSalary: input.baseSalary,
       accruedDays: severanceDays,
+      rules: input.rules,
     });
 
     const terminationMonth = input.terminationDate.getUTCMonth() + 1;
@@ -68,11 +72,13 @@ export class TerminationPayrollCalculator {
     const serviceBonusResult = this.serviceBonusPayrollCalculator.calculate({
       baseSalary: input.baseSalary,
       accruedDays: serviceBonusDays,
+      rules: input.rules,
     });
 
     const vacationResult = this.terminationVacationCalculator.calculate(
       input.baseSalary,
       input.pendingVacationDays,
+      input.rules.salary.monthlyDayBasis,
     );
 
     const concepts: PayrollConceptAmount[] = [

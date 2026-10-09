@@ -33,7 +33,7 @@ model User {
   isActive     Boolean  @default(true)
   createdAt    DateTime @default(now())
 
-  company Company? @relation(fields: [companyId], references: [id])
+  company Company? @relation(fields: [companyId], references: [id], onDelete: Restrict)
 }
 
 model Employee {
@@ -70,14 +70,15 @@ model Employee {
 }
 
 model EmploymentTermination {
-  id              String            @id @default(uuid())
-  companyId       String
-  employeeId      String
-  terminationDate DateTime
-  reason          TerminationReason
-  status          TerminationStatus @default(DRAFT)
-  version         Int               @default(0)
-  notes           String?
+  id                  String            @id @default(uuid())
+  companyId           String
+  employeeId          String
+  terminationDate     DateTime
+  reason              TerminationReason
+  status              TerminationStatus @default(DRAFT)
+  version             Int               @default(0)
+  notes               String?
+  calculatedRuleSetId String?
 
   unpaidSalaryStartDate DateTime?
   pendingVacationDays   Decimal?
@@ -92,8 +93,9 @@ model EmploymentTermination {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  company  Company  @relation(fields: [companyId], references: [id])
-  employee Employee @relation(fields: [employeeId], references: [id])
+  company           Company         @relation(fields: [companyId], references: [id])
+  employee          Employee        @relation(fields: [employeeId], references: [id])
+  calculatedRuleSet PayrollRuleSet? @relation("EmploymentTerminationCalculatedRuleSet", fields: [calculatedRuleSetId], references: [id], onDelete: Restrict)
 
   concepts EmploymentTerminationConcept[]
 
@@ -101,6 +103,7 @@ model EmploymentTermination {
   @@index([employeeId])
   @@index([companyId, status])
   @@index([terminationDate])
+  @@index([calculatedRuleSetId])
 }
 
 model EmploymentTerminationConcept {
@@ -119,10 +122,11 @@ model EmploymentTerminationConcept {
 }
 
 model PayrollPeriod {
-  id          String      @id @default(uuid())
-  companyId   String
-  name        String?
-  payrollType PayrollType @default(MONTHLY)
+  id                  String      @id @default(uuid())
+  companyId           String
+  name                String?
+  payrollType         PayrollType @default(MONTHLY)
+  calculatedRuleSetId String?
 
   // Se conservan para mantener compatibilidad con el módulo actual.
   year  Int
@@ -148,10 +152,13 @@ model PayrollPeriod {
   items     PayrollItem[]
   novelties PayrollNovelty[]
 
+  calculatedRuleSet PayrollRuleSet? @relation("PayrollPeriodCalculatedRuleSet", fields: [calculatedRuleSetId], references: [id], onDelete: Restrict)
+
   @@index([companyId, year, month, payrollType])
   @@index([companyId, status])
   @@index([companyId, startDate, endDate])
   @@index([createdAt])
+  @@index([calculatedRuleSetId])
 }
 
 model PayrollItem {
@@ -202,6 +209,30 @@ model PayrollNovelty {
   payrollPeriod     PayrollPeriod    @relation(fields: [payrollPeriodId], references: [id])
 
   @@index([payrollPeriodId])
+}
+
+model PayrollRuleSet {
+  id               String               @id @default(uuid())
+  jurisdictionCode String               @db.VarChar(2)
+  version          Int
+  schemaVersion    Int                  @default(1)
+  draftRevision    Int                  @default(1)
+  status           PayrollRuleSetStatus @default(DRAFT)
+
+  effectiveFrom DateTime  @db.Date
+  effectiveTo   DateTime? @db.Date
+
+  rulesPayload Json
+
+  publishedAt DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  payrollPeriods         PayrollPeriod[]         @relation("PayrollPeriodCalculatedRuleSet")
+  employmentTerminations EmploymentTermination[] @relation("EmploymentTerminationCalculatedRuleSet")
+
+  @@unique([jurisdictionCode, version])
+  @@index([jurisdictionCode, status, effectiveFrom, effectiveTo])
 }
 
 enum CompanyStatus {
@@ -305,6 +336,11 @@ enum ContractType {
   FIXED_TERM
   WORK_OR_LABOR
   APPRENTICESHIP
+}
+
+enum PayrollRuleSetStatus {
+  DRAFT
+  PUBLISHED
 }
 
 model AuditLog {

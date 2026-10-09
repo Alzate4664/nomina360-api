@@ -18,11 +18,13 @@ import {
   PayrollCalculationResult,
   PayrollConceptAmount,
 } from './money/payroll-money.types';
+import { PayrollRules } from './rules/payroll-rules';
 
 interface PayrollCalculatorInput {
   baseSalary: Decimal;
   workedDays: number;
   novelties: PayrollNovelty[];
+  rules: PayrollRules;
 }
 
 @Injectable()
@@ -44,18 +46,25 @@ export class PayrollCalculatorService {
   ) {}
 
   calculate(input: PayrollCalculatorInput): PayrollCalculationResult {
-    const dailySalary = input.baseSalary.dividedBy(30);
+    const dailySalary = input.baseSalary.dividedBy(
+      input.rules.salary.monthlyDayBasis,
+    );
 
-    const sickLeaveResult = this.sickLeaveCalculator.calculate(input.novelties);
+    const sickLeaveResult = this.sickLeaveCalculator.calculate(
+      input.novelties,
+      input.rules.sickLeave,
+    );
 
     const vacationResult = this.vacationCalculator.calculate(
       input.baseSalary,
       input.novelties,
+      input.rules.salary.monthlyDayBasis,
     );
 
     const leaveResult = this.leaveCalculator.calculate(
       input.baseSalary,
       input.novelties,
+      input.rules.salary.monthlyDayBasis,
     );
 
     const ordinaryWorkedDays = Decimal.max(
@@ -69,6 +78,7 @@ export class PayrollCalculatorService {
     const baseSalaryResult = this.baseSalaryCalculator.calculate(
       input.baseSalary,
       ordinaryWorkedDays,
+      input.rules.salary.monthlyDayBasis,
     );
 
     const bonusResult = this.bonusCalculator.calculate(input.novelties);
@@ -76,22 +86,40 @@ export class PayrollCalculatorService {
     const overtimeResult = this.overtimeCalculator.calculate(
       input.baseSalary,
       input.novelties,
+      {
+        standardMonthlyHours: input.rules.standardMonthlyHours,
+        daytimeMultiplier: input.rules.overtime.daytimeMultiplier,
+        nighttimeMultiplier: input.rules.overtime.nighttimeMultiplier,
+        sundayHolidayRate: input.rules.surcharges.sundayHolidayRate,
+      },
     );
 
     const nightSurchargeResult = this.nightSurchargeCalculator.calculate(
       input.baseSalary,
       input.novelties,
+      {
+        standardMonthlyHours: input.rules.standardMonthlyHours,
+        nighttimeRate: input.rules.surcharges.nighttimeRate,
+      },
     );
 
     const sundayHolidayResult = this.sundayHolidayCalculator.calculate(
       input.baseSalary,
       input.novelties,
+      {
+        standardMonthlyHours: input.rules.standardMonthlyHours,
+        sundayHolidayRate: input.rules.surcharges.sundayHolidayRate,
+      },
     );
 
     const transportAllowanceResult =
       this.transportAllowanceCalculator.calculate(
         input.baseSalary,
         ordinaryWorkedDays,
+        {
+          minimumWage: input.rules.minimumWage,
+          transportAllowance: input.rules.transportAllowance,
+        },
       );
 
     const absenceResult = this.absenceCalculator.calculate(
@@ -110,9 +138,15 @@ export class PayrollCalculatorService {
       .plus(nightSurchargeResult.earned)
       .plus(sundayHolidayResult.earned);
 
-    const healthResult = this.healthCalculator.calculate(contributionBase);
+    const healthResult = this.healthCalculator.calculate(
+      contributionBase,
+      input.rules.contributions.employeeHealthRate,
+    );
 
-    const pensionResult = this.pensionCalculator.calculate(contributionBase);
+    const pensionResult = this.pensionCalculator.calculate(
+      contributionBase,
+      input.rules.contributions.employeePensionRate,
+    );
 
     const earnedTotal = contributionBase.plus(transportAllowanceResult.earned);
 

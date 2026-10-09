@@ -5,7 +5,11 @@ import { PayrollConceptAmount } from '../../money/payroll-money.types';
 
 @Injectable()
 export class TerminationVacationCalculator {
-  calculate(baseSalary: Decimal, pendingVacationDays: Decimal) {
+  calculate(
+    baseSalary: Decimal,
+    pendingVacationDays: Decimal,
+    monthlyDayBasis: number,
+  ) {
     if (baseSalary.lte(0) || pendingVacationDays.lte(0)) {
       return {
         earned: new Decimal(0),
@@ -13,7 +17,7 @@ export class TerminationVacationCalculator {
       };
     }
 
-    const dailySalary = baseSalary.dividedBy(30);
+    const dailySalary = baseSalary.dividedBy(monthlyDayBasis);
     const amount = dailySalary.times(pendingVacationDays);
 
     return {

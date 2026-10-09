@@ -6,8 +6,12 @@ import { PayrollConceptAmount } from '../../money/payroll-money.types';
 
 @Injectable()
 export class VacationCalculator {
-  calculate(baseSalary: Decimal, novelties: PayrollNovelty[]) {
-    const dailySalary = baseSalary.dividedBy(30);
+  calculate(
+    baseSalary: Decimal,
+    novelties: PayrollNovelty[],
+    monthlyDayBasis: number,
+  ) {
+    const dailySalary = baseSalary.dividedBy(monthlyDayBasis);
 
     let earned = new Decimal(0);
     let totalDays = new Decimal(0);

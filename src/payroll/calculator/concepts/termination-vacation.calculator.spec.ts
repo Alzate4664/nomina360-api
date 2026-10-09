@@ -12,6 +12,7 @@ describe('TerminationVacationCalculator', () => {
     const result = calculator.calculate(
       new Decimal('3000000'),
       new Decimal('15'),
+      30,
     );
 
     expect(Decimal.isDecimal(result.earned)).toBe(true);
@@ -28,6 +29,7 @@ describe('TerminationVacationCalculator', () => {
     const result = calculator.calculate(
       new Decimal('3000000'),
       new Decimal('7.5'),
+      30,
     );
 
     expect(Decimal.isDecimal(result.earned)).toBe(true);
@@ -38,6 +40,7 @@ describe('TerminationVacationCalculator', () => {
     const result = calculator.calculate(
       new Decimal('700362'),
       new Decimal('1'),
+      30,
     );
 
     expect(Decimal.isDecimal(result.earned)).toBe(true);
@@ -51,6 +54,7 @@ describe('TerminationVacationCalculator', () => {
     const result = calculator.calculate(
       new Decimal('3000000'),
       new Decimal('0'),
+      30,
     );
 
     expect(Decimal.isDecimal(result.earned)).toBe(true);
@@ -59,7 +63,11 @@ describe('TerminationVacationCalculator', () => {
   });
 
   it('should return Decimal zero when base salary is zero', () => {
-    const result = calculator.calculate(new Decimal('0'), new Decimal('15'));
+    const result = calculator.calculate(
+      new Decimal('0'),
+      new Decimal('15'),
+      30,
+    );
 
     expect(Decimal.isDecimal(result.earned)).toBe(true);
     expect(result.earned.toString()).toBe('0');
@@ -73,6 +81,7 @@ describe('TerminationVacationCalculator', () => {
     const result = calculator.calculate(
       new Decimal('3000000'),
       new Decimal(days),
+      30,
     );
 
     expect(Decimal.isDecimal(result.earned)).toBe(true);
@@ -86,10 +95,21 @@ describe('TerminationVacationCalculator', () => {
     const result = calculator.calculate(
       new Decimal('3000000'),
       new Decimal('-0.5'),
+      30,
     );
 
     expect(Decimal.isDecimal(result.earned)).toBe(true);
     expect(result.earned.toString()).toBe('0');
     expect(result.concepts).toEqual([]);
+  });
+
+  it('should use the supplied monthly salary day basis', () => {
+    const result = calculator.calculate(
+      new Decimal('3000000'),
+      new Decimal('2'),
+      20,
+    );
+
+    expect(result.earned.toString()).toBe('300000');
   });
 });

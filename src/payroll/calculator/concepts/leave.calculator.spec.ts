@@ -22,9 +22,11 @@ describe('LeaveCalculator', () => {
     }) as unknown as PayrollNovelty;
 
   it('should calculate paid leave', () => {
-    const result = calculator.calculate(new Decimal('3000000'), [
-      createLeave(LeaveType.PAID, '3'),
-    ]);
+    const result = calculator.calculate(
+      new Decimal('3000000'),
+      [createLeave(LeaveType.PAID, '3')],
+      30,
+    );
 
     expect(Decimal.isDecimal(result.earned)).toBe(true);
     expect(Decimal.isDecimal(result.days)).toBe(true);
@@ -37,9 +39,11 @@ describe('LeaveCalculator', () => {
   });
 
   it('should not generate earnings for unpaid leave', () => {
-    const result = calculator.calculate(new Decimal('3000000'), [
-      createLeave(LeaveType.UNPAID, '3'),
-    ]);
+    const result = calculator.calculate(
+      new Decimal('3000000'),
+      [createLeave(LeaveType.UNPAID, '3')],
+      30,
+    );
 
     expect(result.earned.toString()).toBe('0');
     expect(result.days.toString()).toBe('3');
@@ -47,18 +51,22 @@ describe('LeaveCalculator', () => {
   });
 
   it('should calculate fractional paid leave exactly', () => {
-    const result = calculator.calculate(new Decimal('3000000'), [
-      createLeave(LeaveType.PAID, '1.5'),
-    ]);
+    const result = calculator.calculate(
+      new Decimal('3000000'),
+      [createLeave(LeaveType.PAID, '1.5')],
+      30,
+    );
 
     expect(result.earned.toString()).toBe('150000');
     expect(result.days.toString()).toBe('1.5');
   });
 
   it('should ignore leave with zero days', () => {
-    const result = calculator.calculate(new Decimal('3000000'), [
-      createLeave(LeaveType.PAID, '0'),
-    ]);
+    const result = calculator.calculate(
+      new Decimal('3000000'),
+      [createLeave(LeaveType.PAID, '0')],
+      30,
+    );
 
     expect(result.earned.toString()).toBe('0');
     expect(result.days.toString()).toBe('0');
@@ -66,9 +74,11 @@ describe('LeaveCalculator', () => {
   });
 
   it('should ignore leave with negative days', () => {
-    const result = calculator.calculate(new Decimal('3000000'), [
-      createLeave(LeaveType.PAID, '-2'),
-    ]);
+    const result = calculator.calculate(
+      new Decimal('3000000'),
+      [createLeave(LeaveType.PAID, '-2')],
+      30,
+    );
 
     expect(result.earned.toString()).toBe('0');
     expect(result.days.toString()).toBe('0');
@@ -76,10 +86,11 @@ describe('LeaveCalculator', () => {
   });
 
   it('should sum paid and unpaid leave days correctly', () => {
-    const result = calculator.calculate(new Decimal('3000000'), [
-      createLeave(LeaveType.PAID, '2'),
-      createLeave(LeaveType.UNPAID, '3'),
-    ]);
+    const result = calculator.calculate(
+      new Decimal('3000000'),
+      [createLeave(LeaveType.PAID, '2'), createLeave(LeaveType.UNPAID, '3')],
+      30,
+    );
 
     expect(result.earned.toString()).toBe('200000');
     expect(result.days.toString()).toBe('5');
@@ -94,10 +105,20 @@ describe('LeaveCalculator', () => {
       quantity: new Prisma.Decimal('3'),
     } as unknown as PayrollNovelty;
 
-    const result = calculator.calculate(new Decimal('3000000'), [novelty]);
+    const result = calculator.calculate(new Decimal('3000000'), [novelty], 30);
 
     expect(result.earned.toString()).toBe('0');
     expect(result.days.toString()).toBe('0');
     expect(result.concepts).toEqual([]);
+  });
+
+  it('should use the supplied monthly salary day basis', () => {
+    const result = calculator.calculate(
+      new Decimal('3000000'),
+      [createLeave(LeaveType.PAID, '2')],
+      20,
+    );
+
+    expect(result.earned.toString()).toBe('300000');
   });
 });

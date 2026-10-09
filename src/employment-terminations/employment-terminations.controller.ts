@@ -12,6 +12,7 @@ import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { Roles } from '../common/decorators/roles.decorator';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
+import { TenantScopeGuard } from '../common/guards/tenant-scope.guard';
 import type { AuthenticatedUser } from '../common/types/authenticated-user.type';
 import { parsePositiveInteger } from '../common/utils/pagination.util';
 import { CreateEmploymentTerminationDto } from './dto/create-employment-termination.dto';
@@ -21,7 +22,7 @@ import { CalculateEmploymentTerminationDto } from './dto/calculate-employment-te
 @ApiTags('Employment Terminations')
 @ApiBearerAuth()
 @Controller('employment-terminations')
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(JwtAuthGuard, TenantScopeGuard, RolesGuard)
 export class EmploymentTerminationsController {
   constructor(
     private readonly employmentTerminationsService: EmploymentTerminationsService,

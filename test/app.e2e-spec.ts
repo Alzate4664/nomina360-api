@@ -4,6 +4,7 @@ import request from 'supertest';
 import { AppModule } from '../src/app.module';
 import { AuditService } from '../src/audit/audit.service';
 import { PrismaService } from '../src/prisma/prisma.service';
+import { E2E_CO_PAYROLL_RULE_SET_ID } from './fixtures/payroll-rule-set.fixture';
 
 describe('Nomina360 API (e2e)', () => {
   let app: INestApplication;
@@ -225,6 +226,41 @@ if (rollbackPeriodIds.length > 0) {
       }
 
       if (temporalPayrollPeriodId) {
+        const temporalPayrollItems = await prisma.payrollItem.findMany({
+          where: {
+            payrollPeriodId: temporalPayrollPeriodId,
+          },
+          select: {
+            id: true,
+          },
+        });
+
+        const temporalPayrollItemIds = temporalPayrollItems.map(
+          (item) => item.id,
+        );
+
+        if (temporalPayrollItemIds.length > 0) {
+          await prisma.payrollConceptDetail.deleteMany({
+            where: {
+              payrollItemId: {
+                in: temporalPayrollItemIds,
+              },
+            },
+          });
+        }
+
+        await prisma.payrollItem.deleteMany({
+          where: {
+            payrollPeriodId: temporalPayrollPeriodId,
+          },
+        });
+
+        await prisma.payrollNovelty.deleteMany({
+          where: {
+            payrollPeriodId: temporalPayrollPeriodId,
+          },
+        });
+
         await prisma.payrollPeriod.deleteMany({
           where: {
             id: temporalPayrollPeriodId,
@@ -613,6 +649,32 @@ if (rollbackPeriodIds.length > 0) {
     expect(response.body.paymentDate).toBe('2099-09-01T00:00:00.000Z');
 
     temporalPayrollPeriodId = response.body.id;
+  });
+
+  it('POST /payroll/periods/:id/calculate debe fijar el PayrollRuleSet publicado aplicable', async () => {
+    expect(temporalPayrollPeriodId).toBeDefined();
+
+    if (!temporalPayrollPeriodId) {
+      throw new Error('Se esperaba el período MONTHLY temporal E2E');
+    }
+
+    await request(app.getHttpServer())
+      .post(`/payroll/periods/${temporalPayrollPeriodId}/calculate`)
+      .set('Authorization', `Bearer ${ownerToken}`)
+      .expect(201);
+
+    const period = await prisma.payrollPeriod.findUniqueOrThrow({
+      where: {
+        id: temporalPayrollPeriodId,
+      },
+      select: {
+        status: true,
+        calculatedRuleSetId: true,
+      },
+    });
+
+    expect(period.status).toBe('CALCULATED');
+    expect(period.calculatedRuleSetId).toBe(E2E_CO_PAYROLL_RULE_SET_ID);
   });
 
   it('POST /payroll/periods debe permitir dos SEMIMONTHLY no solapadas en el mismo mes', async () => {
@@ -1332,7 +1394,7 @@ it('POST /payroll/periods/:id/calculate debe restaurar la liquidación anterior 
         department: 'Pruebas',
         contractType: 'INDEFINITE',
         baseSalary: 3000000,
-        startDate: '2026-01-15',
+        startDate: '2099-01-15',
         eps: 'Sura',
         pensionFund: 'Proteccion',
         arl: 'Positiva',
@@ -1352,7 +1414,7 @@ it('POST /payroll/periods/:id/calculate debe restaurar la liquidación anterior 
       .set('Authorization', `Bearer ${ownerToken}`)
       .send({
         employeeId: terminationEmployeeId,
-        terminationDate: '2026-09-08',
+        terminationDate: '2099-09-08',
         reason: 'RESIGNATION',
         notes: 'Terminación automática E2E',
       })
@@ -1370,12 +1432,13 @@ it('POST /payroll/periods/:id/calculate debe restaurar la liquidación anterior 
       .post(`/employment-terminations/${employmentTerminationId}/calculate`)
       .set('Authorization', `Bearer ${ownerToken}`)
       .send({
-        unpaidSalaryStartDate: '2026-09-01',
+        unpaidSalaryStartDate: '2099-09-01',
         pendingVacationDays: 7.5,
       })
       .expect(201);
 
     expect(response.body.status).toBe('CALCULATED');
+    expect(response.body.calculatedRuleSetId).toBe(E2E_CO_PAYROLL_RULE_SET_ID);
     expect(response.body.calculatedAt).toBeDefined();
     expect(Number(response.body.earnedTotal)).toBeGreaterThan(0);
 
