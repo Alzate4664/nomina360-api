@@ -46,6 +46,43 @@ export interface PayrollRuleSetQueryResult {
 export class PayrollRuleSetQueryService {
   constructor(private readonly prisma: PrismaService) {}
 
+  async findDraftDetail(ruleSetId: string) {
+    const row = await this.prisma.payrollRuleSet.findUnique({
+      where: { id: ruleSetId },
+      select: {
+        id: true,
+        jurisdictionCode: true,
+        version: true,
+        schemaVersion: true,
+        draftRevision: true,
+        rulesPayload: true,
+        effectiveFrom: true,
+        effectiveTo: true,
+        status: true,
+        publishedAt: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+    });
+    if (!row) throw new PayrollRuleSetDraftQueryError('RULE_SET_NOT_FOUND');
+    if (row.status !== PayrollRuleSetStatus.DRAFT)
+      throw new PayrollRuleSetDraftQueryError('RULE_SET_NOT_DRAFT');
+    return {
+      id: row.id,
+      jurisdictionCode: row.jurisdictionCode,
+      version: row.version,
+      schemaVersion: row.schemaVersion,
+      draftRevision: row.draftRevision,
+      rulesPayload: row.rulesPayload,
+      approvedEffectiveFrom: row.effectiveFrom.toISOString().slice(0, 10),
+      approvedEffectiveTo: row.effectiveTo?.toISOString().slice(0, 10) ?? null,
+      status: 'DRAFT' as const,
+      publishedAt: null,
+      createdAt: row.createdAt.toISOString(),
+      updatedAt: row.updatedAt.toISOString(),
+    };
+  }
+
   async findAll(
     input: PayrollRuleSetQueryInput = {},
   ): Promise<PayrollRuleSetQueryResult> {
@@ -87,5 +124,14 @@ export class PayrollRuleSetQueryService {
       total,
       totalPages: Math.ceil(total / limit),
     };
+  }
+}
+
+export class PayrollRuleSetDraftQueryError extends Error {
+  constructor(
+    public readonly code: 'RULE_SET_NOT_FOUND' | 'RULE_SET_NOT_DRAFT',
+  ) {
+    super(code);
+    this.name = 'PayrollRuleSetDraftQueryError';
   }
 }

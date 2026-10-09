@@ -10,6 +10,7 @@ describe('PayrollRuleSetQueryService', () => {
   let service: PayrollRuleSetQueryService;
   const prisma = {
     payrollRuleSet: {
+      findUnique: jest.fn(),
       findMany: jest.fn<
         Promise<unknown[]>,
         [Prisma.PayrollRuleSetFindManyArgs]
@@ -44,6 +45,83 @@ describe('PayrollRuleSetQueryService', () => {
       ],
     }).compile();
     service = module.get(PayrollRuleSetQueryService);
+  });
+
+  describe('findDraftDetail', () => {
+    const payload = { amount: '001.2300', nested: { rate: '0.0400' } };
+    const draft = {
+      ...row,
+      status: PayrollRuleSetStatus.DRAFT,
+      schemaVersion: 999,
+      draftRevision: 4,
+      publishedAt: null,
+      rulesPayload: payload,
+    };
+    it.each([null, new Date('2026-12-31')])(
+      'projects dates and unchanged payload with one explicit read: %s',
+      async (effectiveTo) => {
+        prisma.payrollRuleSet.findUnique.mockResolvedValue({
+          ...draft,
+          effectiveTo,
+          secret: 'excluded',
+        });
+        const result = await service.findDraftDetail(' arbitrary-id ');
+        expect(prisma.payrollRuleSet.findUnique).toHaveBeenCalledTimes(1);
+        expect(prisma.payrollRuleSet.findUnique).toHaveBeenCalledWith({
+          where: { id: ' arbitrary-id ' },
+          select: {
+            id: true,
+            jurisdictionCode: true,
+            version: true,
+            schemaVersion: true,
+            draftRevision: true,
+            rulesPayload: true,
+            effectiveFrom: true,
+            effectiveTo: true,
+            status: true,
+            publishedAt: true,
+            createdAt: true,
+            updatedAt: true,
+          },
+        });
+        expect(result).toEqual({
+          id: draft.id,
+          jurisdictionCode: 'CO',
+          version: 2,
+          schemaVersion: 999,
+          draftRevision: 4,
+          rulesPayload: payload,
+          approvedEffectiveFrom: '2026-01-01',
+          approvedEffectiveTo: effectiveTo ? '2026-12-31' : null,
+          status: 'DRAFT',
+          publishedAt: null,
+          createdAt: row.createdAt.toISOString(),
+          updatedAt: row.updatedAt.toISOString(),
+        });
+        expect(result.rulesPayload).toBe(payload);
+        expect(prisma.$transaction).not.toHaveBeenCalled();
+        expect(prisma.payrollRuleSet.findMany).not.toHaveBeenCalled();
+        expect(prisma.payrollRuleSet.count).not.toHaveBeenCalled();
+      },
+    );
+    it('distinguishes missing rows', async () => {
+      prisma.payrollRuleSet.findUnique.mockResolvedValue(null);
+      await expect(service.findDraftDetail('missing')).rejects.toMatchObject({
+        code: 'RULE_SET_NOT_FOUND',
+      });
+    });
+    it.each([PayrollRuleSetStatus.PUBLISHED])(
+      'rejects non-draft %s',
+      async (status) => {
+        prisma.payrollRuleSet.findUnique.mockResolvedValue({
+          ...draft,
+          status,
+        });
+        await expect(service.findDraftDetail('id')).rejects.toMatchObject({
+          code: 'RULE_SET_NOT_DRAFT',
+        });
+      },
+    );
   });
 
   it('uses default pagination and executes list and count together', async () => {
